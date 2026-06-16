@@ -1,0 +1,42 @@
+{
+  "name": "whatsapp-bot",
+  "version": "0.0.1",
+  "description": "Virtual online class management system for Revision Workshops with WhatsApp, LearnDash, and LLM integrations",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "learndash",
+    "lms",
+    "gemini",
+    "education"
+  ],
+  "author": "Antigravity",
+  "license": "ISC",
+  "dependencies": {
+    "@fastify/static": "^9.1.3",
+    "@google/generative-ai": "^0.11.0",
+    "@prisma/client": "^5.14.0",
+    "@whiskeysockets/baileys": "^6.7.2",
+    "csv-parser": "^3.0.0",
+    "dotenv": "^16.4.5",
+    "fastify": "^4.27.0",
+    "node-cron": "^3.0.3",
+    "pino": "^9.1.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "@types/node-cron": "^3.0.11",
+    "prisma": "^5.14.0",
+    "tsx": "^4.11.0",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}

@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Revision Workshop Manager - Setup Portal</title>
+  
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="Virtual online class management dashboard for Revision Workshops. Register courses, upload CSV rosters, and setup bot orchestration.">
+  
+  <!-- Premium Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS Play CDN for rich aesthetics -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- FontAwesome for Premium Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            outfit: ['Outfit', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#f5f3ff',
+              100: '#ede9fe',
+              500: '#8b5cf6',
+              600: '#7c3aed',
+              700: '#6d28d9',
+              900: '#4c1d95',
+            },
+            dark: {
+              900: '#0b0f19',
+              800: '#151d30',
+              700: '#1f2b48',
+              600: '#2b3b61',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #0b0f19;
+      color: #f3f4f6;
+      font-family: 'Inter', sans-serif;
+    }
+    
+    .glass-panel {
+      background: rgba(21, 29, 48, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    
+    .glass-input {
+      background: rgba(11, 15, 25, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: all 0.3s ease;
+    }
+    
+    .glass-input:focus {
+      border-color: #8b5cf6;
+      box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+      outline: none;
+    }
+
+    .gradient-text {
+      background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 50%, #6366f1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between py-8 px-4 sm:px-6 lg:px-8 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-brand-900/20 via-dark-900 to-dark-900">
+
+  <main class="max-w-4xl w-full mx-auto my-auto space-y-8">
+    <!-- Header -->
+    <div class="text-center space-y-3">
+      <div class="inline-flex items-center justify-center p-3 bg-brand-600/10 rounded-2xl border border-brand-500/20 mb-2">
+        <i class="fa-solid fa-graduation-cap text-3xl text-brand-500"></i>
+      </div>
+      <h1 class="text-4xl sm:text-5xl font-extrabold font-outfit tracking-tight text-white">
+        Revision <span class="gradient-text">Workshop</span> Setup
+      </h1>
+      <p class="text-gray-400 max-w-lg mx-auto text-sm sm:text-base">
+        Register class metadata, define LearnDash mapping, and upload your student roster to kickstart WhatsApp automation.
+      </p>
+    </div>
+
+    <!-- Main Form Panel -->
+    <div class="glass-panel rounded-3xl p-6 sm:p-8 shadow-2xl space-y-8">
+      
+      <!-- Stepper Indicator -->
+      <div class="flex items-center justify-between max-w-md mx-auto border-b border-white/5 pb-6">
+        <div class="flex items-center space-x-3">
+          <span id="step1-badge" class="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm bg-brand-600 text-white">1</span>
+          <span class="text-sm font-medium text-white">Class Metadata</span>
+        </div>
+        <div class="flex-grow h-[1px] bg-white/10 mx-4"></div>
+        <div class="flex items-center space-x-3">
+          <span id="step2-badge" class="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm bg-dark-700 text-gray-400">2</span>
+          <span class="text-sm font-medium text-gray-400">Roster Import</span>
+        </div>
+      </div>
+
+      <!-- Step 1: Form Details -->
+      <div id="step-1-content" class="space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Subject -->
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2" for="subject">Subject / Class Name</label>
+            <input class="glass-input w-full px-4 py-3 rounded-xl text-white text-sm" type="text" id="subject" placeholder="e.g. Form 5 Physics Revision" required>
+          </div>
+          <!-- Course ID -->
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2" for="courseId">LearnDash Course ID</label>
+            <input class="glass-input w-full px-4 py-3 rounded-xl text-white text-sm" type="number" id="courseId" placeholder="e.g. 1024" required>
+          </div>
+          <!-- Meeting Link -->
+          <div class="md:col-span-2">
+            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2" for="meetingLink">Class Meet/Zoom Link</label>
+            <input class="glass-input w-full px-4 py-3 rounded-xl text-white text-sm" type="url" id="meetingLink" placeholder="https://meet.google.com/abc-defg-hij">
+          </div>
+          <!-- Class Day -->
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2" for="classDay">Weekly Class Day</label>
+            <select class="glass-input w-full px-4 py-3 rounded-xl text-white text-sm" id="classDay">
+              <option value="0">Sunday</option>
+              <option value="1">Monday</option>
+              <option value="2">Tuesday</option>
+              <option value="3">Wednesday</option>
+              <option value="4">Thursday</option>
+              <option value="5">Friday</option>
+              <option value="6">Saturday</option>
+            </select>
+          </div>
+          <!-- Class Time -->
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2" for="classTime">Weekly Class Time</label>
+            <input class="glass-input w-full px-4 py-3 rounded-xl text-white text-sm" type="time" id="classTime" required>
+          </div>
+          <!-- Teacher Name -->
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2" for="teacherName">Teacher Name</label>
+            <input class="glass-input w-full px-4 py-3 rounded-xl text-white text-sm" type="text" id="teacherName" placeholder="e.g. Teacher Sarah" required>
+          </div>
+          <!-- Teacher Phone -->
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2" for="teacherPhone">Teacher WhatsApp JID / Phone</label>
+            <input class="glass-input w-full px-4 py-3 rounded-xl text-white text-sm" type="text" id="teacherPhone" placeholder="e.g. 60123456789@s.whatsapp.net" required>
+          </div>
+        </div>
+
+        <div class="flex justify-end pt-4">
+          <button onclick="goToStep2()" class="px-6 py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-sm font-medium flex items-center space-x-2 transition shadow-lg shadow-brand-500/25">
+            <span>Continue to Roster</span>
+            <i class="fa-solid fa-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2: Student Upload -->
+      <div id="step-2-content" class="hidden space-y-6">
+        
+        <div class="flex justify-between items-center bg-dark-800 p-4 rounded-2xl border border-white/5">
+          <div class="space-y-1">
+            <h3 class="text-sm font-semibold text-white">Roster CSV Format</h3>
+            <p class="text-xs text-gray-400">Ensure columns: <code>name</code>, <code>phoneNumber</code>, <code>learndashId</code></p>
+          </div>
+          <button onclick="downloadCSVTemplate()" class="text-xs bg-white/10 hover:bg-white/15 text-white px-3 py-2 rounded-lg font-medium flex items-center space-x-1.5 transition">
+            <i class="fa-solid fa-download"></i>
+            <span>Get Template</span>
+          </button>
+        </div>
+
+        <!-- Drag & Drop Zone -->
+        <div class="border-2 border-dashed border-white/10 hover:border-brand-500/50 rounded-2xl p-8 text-center cursor-pointer transition relative bg-dark-900/30">
+          <input type="file" id="csvFileInput" accept=".csv" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleCSVFile(event)">
+          <div class="space-y-3 pointer-events-none">
+            <i class="fa-solid fa-file-csv text-4xl text-brand-500/80"></i>
+            <div class="text-sm font-semibold text-white">Click or drag & drop CSV roster file</div>
+            <p class="text-xs text-gray-400">Only standard .csv file format is supported</p>
+          </div>
+        </div>
+
+        <!-- Student List Preview -->
+        <div class="space-y-3">
+          <h3 class="text-sm font-semibold text-gray-300">Roster Preview (<span id="student-count">0</span> students loaded)</h3>
+          
+          <div class="max-h-60 overflow-y-auto rounded-xl border border-white/5 bg-dark-900/50">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr class="bg-dark-800 text-gray-400 border-b border-white/5 uppercase tracking-wider font-semibold">
+                  <th class="px-4 py-3">Name</th>
+                  <th class="px-4 py-3">WhatsApp Phone</th>
+                  <th class="px-4 py-3">LearnDash User ID</th>
+                </tr>
+              </thead>
+              <tbody id="student-table-body" class="text-gray-300 divide-y divide-white/5">
+                <tr>
+                  <td colspan="3" class="px-4 py-6 text-center text-gray-500">No students loaded yet. Please upload a roster.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="flex justify-between items-center pt-4 border-t border-white/5">
+          <button onclick="goToStep1()" class="px-5 py-3 text-gray-400 hover:text-white text-sm font-medium flex items-center space-x-1.5 transition">
+            <i class="fa-solid fa-arrow-left"></i>
+            <span>Back</span>
+          </button>
+          <button onclick="submitWorkshop()" class="px-6 py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-sm font-medium flex items-center space-x-2 transition shadow-lg shadow-brand-500/25">
+            <i class="fa-solid fa-circle-check"></i>
+            <span>Create & Orchestrate Bot</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Notification Banner -->
+  <div id="toast" class="fixed bottom-4 right-4 max-w-sm w-full bg-dark-800 border border-brand-500/20 text-white p-4 rounded-xl shadow-2xl flex items-start space-x-3 transition duration-300 transform translate-y-24 opacity-0 z-50">
+    <div class="p-1 rounded-lg bg-brand-500/10 text-brand-500" id="toast-icon">
+      <i class="fa-solid fa-circle-info"></i>
+    </div>
+    <div class="flex-grow space-y-1">
+      <div class="text-xs font-semibold" id="toast-title">Success</div>
+      <p class="text-xs text-gray-400" id="toast-msg">Operation completed successfully.</p>
+    </div>
+    <button onclick="hideToast()" class="text-gray-400 hover:text-white transition"><i class="fa-solid fa-xmark text-sm"></i></button>
+  </div>
+
+  <footer class="text-center text-xs text-gray-500 pt-8 font-medium">
+    Revision Workshop Bot v0.0.1 &bull; Powered by Antigravity
+  </footer>
+
+  <script>
+    // App State
+    let workshopData = {};
+    let studentList = [];
+
+    // Navigation Steps
+    function goToStep1() {
+      document.getElementById('step-1-content').classList.remove('hidden');
+      document.getElementById('step-2-content').classList.add('hidden');
+      
+      const badge1 = document.getElementById('step1-badge');
+      const badge2 = document.getElementById('step2-badge');
+      badge1.className = 'w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm bg-brand-600 text-white';
+      badge2.className = 'w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm bg-dark-700 text-gray-400';
+    }
+
+    function goToStep2() {
+      // Validate Step 1 Inputs
+      const subject = document.getElementById('subject').value.trim();
+      const courseId = document.getElementById('courseId').value.trim();
+      const classTime = document.getElementById('classTime').value;
+      const teacherName = document.getElementById('teacherName').value.trim();
+      const teacherPhone = document.getElementById('teacherPhone').value.trim();
+
+      if (!subject || !courseId || !classTime || !teacherName || !teacherPhone) {
+        showToast('Required Fields Missing', 'Please fill in all mandatory fields before continuing.', 'error');
+        return;
+      }
+
+      workshopData = {
+        subject,
+        courseId: parseInt(courseId, 10),
+        meetingLink: document.getElementById('meetingLink').value.trim() || null,
+        classDayOfWeek: parseInt(document.getElementById('classDay').value, 10),
+        classTime,
+        teacherName,
+        teacherPhone: teacherPhone.includes('@') ? teacherPhone : `${teacherPhone}@s.whatsapp.net`
+      };
+
+      document.getElementById('step-1-content').classList.add('hidden');
+      document.getElementById('step-2-content').classList.remove('hidden');
+
+      const badge1 = document.getElementById('step1-badge');
+      const badge2 = document.getElementById('step2-badge');
+      badge1.className = 'w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm bg-brand-600/20 text-brand-400 border border-brand-500/35';
+      badge2.className = 'w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm bg-brand-600 text-white';
+    }
+
+    // CSV Roster Upload handler
+    function handleCSVFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const text = e.target.result;
+        parseCSVText(text);
+      };
+      reader.readAsText(file);
+    }
+
+    function parseCSVText(text) {
+      const lines = text.split(/\r?\n/);
+      if (lines.length === 0) return;
+
+      const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
+      
+      const nameIdx = headers.indexOf('name');
+      const phoneIdx = headers.indexOf('phoneNumber');
+      const idIdx = headers.indexOf('learndashId');
+
+      if (nameIdx === -1 || phoneIdx === -1 || idIdx === -1) {
+        showToast('Invalid CSV Headers', 'Your CSV must contain: name, phoneNumber, learndashId', 'error');
+        return;
+      }
+
+      const parsedStudents = [];
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        // basic CSV parsing ignoring nested commas
+        const cols = line.split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
+        if (cols.length < headers.length) continue;
+
+        let phone = cols[phoneIdx];
+        // Normalize phone to JID format
+        if (!phone.includes('@')) {
+          phone = `${phone}@s.whatsapp.net`;
+        }
+
+        parsedStudents.push({
+          name: cols[nameIdx],
+          phoneNumber: phone,
+          learndashId: parseInt(cols[idIdx], 10)
+        });
+      }
+
+      studentList = parsedStudents;
+      updateStudentTable();
+      showToast('CSV Parsed Successfully', `Loaded ${studentList.length} students.`, 'success');
+    }
+
+    function updateStudentTable() {
+      const tbody = document.getElementById('student-table-body');
+      document.getElementById('student-count').textContent = studentList.length;
+
+      if (studentList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" class="px-4 py-6 text-center text-gray-500">No students loaded yet. Please upload a roster.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = studentList.map(s => `
+        <tr class="hover:bg-white/5 transition">
+          <td class="px-4 py-3 font-medium text-white">${s.name}</td>
+          <td class="px-4 py-3">${s.phoneNumber.split('@')[0]}</td>
+          <td class="px-4 py-3 font-mono">${s.learndashId}</td>
+        </tr>
+      `).join('');
+    }
+
+    function downloadCSVTemplate() {
+      const template = "name,phoneNumber,learndashId\nJohn Doe,60123456789,101\nJane Smith,60198765432,102\n";
+      const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.setAttribute("download", "student_roster_template.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    // Submit Workshop setup
+    async function submitWorkshop() {
+      if (studentList.length === 0) {
+        showToast('Empty Roster', 'Please upload a CSV file with at least 1 student before registering.', 'error');
+        return;
+      }
+
+      try {
+        // 1. Create Workshop
+        const workshopResponse = await fetch('/api/workshop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(workshopData)
+        });
+
+        if (!workshopResponse.ok) throw new Error('Workshop metadata creation failed.');
+        const workshopResult = await workshopResponse.json();
+        const workshopId = workshopResult.workshopId;
+
+        // 2. Import Students
+        const importResponse = await fetch(`/api/workshop/${workshopId}/students/import`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(studentList)
+        });
+
+        if (!importResponse.ok) throw new Error('Student import enrollment failed.');
+        const importResult = await importResponse.json();
+
+        showToast('Success!', 'Workshop registered & bot orchestration started.', 'success');
+        
+        // Reset form
+        setTimeout(() => {
+          window.location.reload();
+        }, 3000);
+
+      } catch (err) {
+        console.error(err);
+        showToast('Setup Failed', err.message || 'An error occurred during submission.', 'error');
+      }
+    }
+
+    // Toast notifications utility
+    let toastTimeout;
+    function showToast(title, msg, type = 'success') {
+      const toast = document.getElementById('toast');
+      const titleEl = document.getElementById('toast-title');
+      const msgEl = document.getElementById('toast-msg');
+      const icon = document.getElementById('toast-icon');
+
+      titleEl.textContent = title;
+      msgEl.textContent = msg;
+
+      if (type === 'success') {
+        toast.className = toast.className.replace(/border-[a-z0-9-/]+/g, 'border-emerald-500/20');
+        icon.className = 'p-1 rounded-lg bg-emerald-500/10 text-emerald-500';
+        icon.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
+      } else {
+        toast.className = toast.className.replace(/border-[a-z0-9-/]+/g, 'border-rose-500/20');
+        icon.className = 'p-1 rounded-lg bg-rose-500/10 text-rose-500';
+        icon.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i>';
+      }
+
+      toast.classList.remove('translate-y-24', 'opacity-0');
+      
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(hideToast, 4000);
+    }
+
+    function hideToast() {
+      const toast = document.getElementById('toast');
+      toast.classList.add('translate-y-24', 'opacity-0');
+    }
+  </script>
+</body>
+</html>

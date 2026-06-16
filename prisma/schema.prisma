@@ -1,0 +1,88 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Teacher {
+  id          String     @id @default(uuid())
+  name        String
+  phoneNumber String     @unique // e.g. "60123456789@s.whatsapp.net"
+  email       String?
+  workshops   Workshop[]
+}
+
+model Student {
+  id          String            @id @default(uuid())
+  name        String
+  phoneNumber String            @unique // e.g. "60198765432@s.whatsapp.net"
+  learndashId Int               @unique // Maps Phone Number to WordPress User ID
+  enrollments StudentWorkshop[]
+  progress    ProgressLog[]
+}
+
+model Workshop {
+  id            String            @id @default(uuid())
+  subject       String
+  courseId      Int               // LearnDash Course ID
+  whatsappJid   String?           @unique // WhatsApp Group JID
+  meetingLink   String?           // Google Meet / Zoom link
+  classDayOfWeek Int              // 0 = Sunday, 1 = Monday, etc.
+  classTime     String            // HH:MM format
+  teacherId     String
+  teacher       Teacher           @relation(fields: [teacherId], references: [id])
+  students      StudentWorkshop[]
+  homeworks     Homework[]
+}
+
+model StudentWorkshop {
+  studentId  String
+  workshopId String
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  workshop   Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@id([studentId, workshopId])
+}
+
+model Homework {
+  id          String        @id @default(uuid())
+  workshopId  String
+  lessonId    Int           // LearnDash Lesson/Topic ID
+  title       String
+  dueDate     DateTime
+  workshop    Workshop      @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  progress    ProgressLog[]
+}
+
+enum ProgressStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  SKIPPED_EXERCISES
+  COMPLETED
+}
+
+model ProgressLog {
+  id          String         @id @default(uuid())
+  studentId   String
+  homeworkId  String
+  status      ProgressStatus @default(NOT_STARTED)
+  submittedAt DateTime?
+  score       Float?
+  feedback    String?        // LLM generated comments (for essay questions only)
+  student     Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  homework    Homework       @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, homeworkId])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  timestamp   DateTime @default(now())
+  level       String   // "INFO", "WARN", "ERROR"
+  action      String   // e.g. "SEND_REMINDER", "CREATE_GROUP"
+  details     String
+  operator    String?  // Phone number or system component
+}

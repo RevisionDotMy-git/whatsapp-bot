@@ -1,0 +1,6 @@
+node_modules
+dist
+.env
+whatsapp_session
+*.log
+.gemini
