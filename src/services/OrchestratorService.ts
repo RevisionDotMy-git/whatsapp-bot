@@ -5,6 +5,7 @@ import { ILLMClient } from '../interfaces/ILLMClient.js';
 import { parseCommand } from '../utils/commandParser.js';
 import { evaluateProgress } from '../utils/progressEvaluator.js';
 import { checkReminderDue } from '../utils/reminderScheduler.js';
+import { parseCsvString } from '../utils/csvParser.js';
 import { logAudit } from './db.js';
 
 export class OrchestratorService {
@@ -27,6 +28,24 @@ export class OrchestratorService {
       }
     });
 
+    // Listen for manual additions/invite link joins
+    this.whatsapp.onGroupParticipantUpdate(async (event) => {
+      if (event.action === 'add') {
+        try {
+          const workshop = await this.db.workshop.findUnique({
+            where: { whatsappJid: event.groupJid },
+          });
+          if (workshop) {
+            for (const participant of event.participants) {
+              await this.enrollParticipantInDb(workshop.id, participant);
+            }
+          }
+        } catch (err: any) {
+          await logAudit('ERROR', 'PARTICIPANT_UPDATE_FAIL', `Failed processing participant join: ${err.message}`, event.groupJid);
+        }
+      }
+    });
+
     await logAudit('INFO', 'ORCHESTRATOR_START', 'Orchestrator engine started successfully.');
   }
 
@@ -34,6 +53,25 @@ export class OrchestratorService {
    * Processes incoming WhatsApp messages and matches them against commands
    */
   private async handleMessage(msg: IncomingMessage): Promise<void> {
+    // Intercept CSV upload from Teacher
+    if (msg.document) {
+      const isCsv = msg.document.mimetype === 'text/csv' || 
+                    msg.document.mimetype === 'text/comma-separated-values' || 
+                    msg.document.fileName.endsWith('.csv');
+      if (isCsv) {
+        const teacher = await this.db.teacher.findUnique({
+          where: { phoneNumber: msg.senderJid },
+        });
+        if (teacher) {
+          await this.handleCsvImport(msg, teacher);
+          return;
+        } else {
+          await this.whatsapp.sendMessage(msg.chatJid, '⚠️ Unauthorized: Only teachers can perform CSV imports.');
+          return;
+        }
+      }
+    }
+
     // 1. Resolve Workshop based on Group JID or Teacher JID
     let workshop = await this.db.workshop.findFirst({
       where: msg.isGroup ? { whatsappJid: msg.chatJid } : { teacher: { phoneNumber: msg.senderJid } },
@@ -52,6 +90,26 @@ export class OrchestratorService {
         });
         if (studentEnrollment) {
           workshop = studentEnrollment.workshop;
+        }
+      }
+    }
+
+    // Self-healing enrollment: if group message from someone in the group but not in DB
+    if (msg.isGroup && workshop) {
+      const isEnrolled = workshop.students.some(s => s.student.phoneNumber === msg.senderJid);
+      const isTeacher = workshop.teacher.phoneNumber === msg.senderJid;
+      if (!isEnrolled && !isTeacher) {
+        await this.enrollParticipantInDb(workshop.id, msg.senderJid);
+        // Refresh workshop with new student enrolled so command parsing role checks work!
+        const refreshedWorkshop = await this.db.workshop.findFirst({
+          where: { id: workshop.id },
+          include: {
+            teacher: true,
+            students: { include: { student: true } },
+          },
+        });
+        if (refreschedWorkshop) {
+          workshop = refreshedWorkshop;
         }
       }
     }
@@ -111,8 +169,194 @@ export class OrchestratorService {
         await this.handleTeacherStudentCheck(workshop.id, searchName, teacherJid);
         break;
 
+      case 'groups':
+        const groups = await this.whatsapp.getGroups();
+        if (groups.length === 0) {
+          await this.whatsapp.sendMessage(msg.chatJid, '👥 No active groups found where the bot is participating.');
+        } else {
+          const groupLines = groups.map((g, idx) => `${idx + 1}. *${g.subject}* (JID: \`${g.id}\`)`).join('\n');
+          await this.whatsapp.sendMessage(msg.chatJid, `👥 *Available WhatsApp Groups (${groups.length}):*\n\n${groupLines}`);
+        }
+        break;
+
       default:
         break;
+    }
+  }
+
+  /**
+   * Helper to dynamically enroll a group participant in the database workshop
+   */
+  private async enrollParticipantInDb(workshopId: string, participantJid: string): Promise<void> {
+    const cleanPhone = participantJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+    const dummyId = parseInt(cleanPhone.slice(-9), 10) || Math.floor(Math.random() * 100000000);
+    try {
+      // Check if student already exists in DB
+      let student = await this.db.student.findUnique({
+        where: { phoneNumber: participantJid },
+      });
+
+      if (!student) {
+        student = await this.db.student.create({
+          data: {
+            name: `Student-${cleanPhone}`,
+            phoneNumber: participantJid,
+            learndashId: dummyId,
+          },
+        });
+      }
+
+      // Check if already enrolled in this workshop
+      const enrollment = await this.db.studentWorkshop.findUnique({
+        where: {
+          studentId_workshopId: {
+            studentId: student.id,
+            workshopId,
+          },
+        },
+      });
+
+      if (!enrollment) {
+        await this.db.studentWorkshop.create({
+          data: {
+            studentId: student.id,
+            workshopId,
+          },
+        });
+        await logAudit('INFO', 'AUTO_ENROLLMENT', `Dynamically enrolled participant ${cleanPhone} to workshop ID ${workshopId}`);
+      }
+    } catch (err: any) {
+      await logAudit('ERROR', 'AUTO_ENROLLMENT_FAILED', `Failed to dynamically enroll ${cleanPhone}: ${err.message}`);
+    }
+  }
+
+  /**
+   * Helper to download, parse, and process CSV rosters sent by a teacher
+   */
+  private async handleCsvImport(msg: IncomingMessage, teacher: any): Promise<void> {
+    if (!msg.document) return;
+
+    try {
+      await this.whatsapp.sendMessage(msg.chatJid, `⏳ Processing CSV file "${msg.document.fileName}"...`);
+
+      // 1. Download file content
+      const buffer = await this.whatsapp.downloadDocument(msg.document);
+      const csvText = buffer.toString('utf-8');
+
+      // 2. Parse CSV
+      const rows = parseCsvString(csvText);
+      if (rows.length === 0) {
+        await this.whatsapp.sendMessage(msg.chatJid, '❌ CSV file is empty or headers are not recognized.');
+        return;
+      }
+
+      // 3. Get participating WhatsApp groups
+      const waGroups = await this.whatsapp.getGroups();
+
+      // Track summary statistics
+      const summary: Record<string, { added: string[]; failed: string[] }> = {};
+
+      for (const row of rows) {
+        // Find matching group (case-insensitive)
+        const matchingGroup = waGroups.find(
+          g => g.subject.toLowerCase() === row.groupName.toLowerCase()
+        );
+
+        if (!summary[row.groupName]) {
+          summary[row.groupName] = { added: [], failed: [] };
+        }
+
+        if (!matchingGroup) {
+          summary[row.groupName].failed.push(`${row.name} (Group not found)`);
+          continue;
+        }
+
+        const cleanPhone = row.phone.replace(/\D/g, '');
+        const studentJid = `${cleanPhone}@s.whatsapp.net`;
+
+        try {
+          // Add to WhatsApp group
+          await this.whatsapp.addParticipants(matchingGroup.id, [studentJid]);
+
+          // Find or link DB workshop
+          let dbWorkshop = await this.db.workshop.findFirst({
+            where: { whatsappJid: matchingGroup.id },
+          });
+
+          if (!dbWorkshop) {
+            // Fallback: search by subject name in DB
+            dbWorkshop = await this.db.workshop.findFirst({
+              where: { subject: { equals: matchingGroup.subject, mode: 'insensitive' } },
+            });
+            if (dbWorkshop) {
+              await this.db.workshop.update({
+                where: { id: dbWorkshop.id },
+                data: { whatsappJid: matchingGroup.id },
+              });
+            }
+          }
+
+          if (dbWorkshop) {
+            // Register/enroll student in database
+            const dummyId = parseInt(cleanPhone.slice(-9), 10) || Math.floor(Math.random() * 100000000);
+            
+            const student = await this.db.student.upsert({
+              where: { phoneNumber: studentJid },
+              create: {
+                name: row.name,
+                phoneNumber: studentJid,
+                learndashId: dummyId,
+              },
+              update: {
+                name: row.name, // Keep nickname updated
+              },
+            });
+
+            await this.db.studentWorkshop.upsert({
+              where: {
+                studentId_workshopId: {
+                  studentId: student.id,
+                  workshopId: dbWorkshop.id,
+                },
+              },
+              create: {
+                studentId: student.id,
+                workshopId: dbWorkshop.id,
+              },
+              update: {},
+            });
+          }
+
+          summary[row.groupName].added.push(row.name);
+        } catch (err: any) {
+          summary[row.groupName].failed.push(`${row.name} (${err.message})`);
+        }
+      }
+
+      // Compile report
+      let report = `📋 *CSV Participant Import Summary*\n\n`;
+      let totalAdded = 0;
+      let totalFailed = 0;
+
+      for (const [groupName, stats] of Object.entries(summary)) {
+        report += `👥 *Group: ${groupName}*\n`;
+        if (stats.added.length > 0) {
+          report += `✅ Added:\n` + stats.added.map(n => `- ${n}`).join('\n') + '\n';
+          totalAdded += stats.added.length;
+        }
+        if (stats.failed.length > 0) {
+          report += `❌ Failed:\n` + stats.failed.map(f => `- ${f}`).join('\n') + '\n';
+          totalFailed += stats.failed.length;
+        }
+        report += `\n`;
+      }
+
+      report += `🏁 *Total Processed:* ${totalAdded + totalFailed} | *Added:* ${totalAdded} | *Failed:* ${totalFailed}`;
+      await this.whatsapp.sendMessage(msg.chatJid, report);
+
+    } catch (err: any) {
+      await logAudit('ERROR', 'CSV_IMPORT_FAIL', `CSV processing failed: ${err.message}`, teacher.phoneNumber);
+      await this.whatsapp.sendMessage(msg.chatJid, `❌ Failed to process CSV: ${err.message}`);
     }
   }
 

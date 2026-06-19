@@ -35,7 +35,7 @@ export function parseCommand(
   const commandName = parts[0].toLowerCase();
   const args = parts.slice(1);
 
-  const recognizedCommands = ['homework', 'meeting', 'link', 'report', 'students', 'check'];
+  const recognizedCommands = ['homework', 'meeting', 'link', 'report', 'students', 'check', 'groups'];
   if (!recognizedCommands.includes(commandName)) {
     return null;
   }

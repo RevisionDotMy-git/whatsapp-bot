@@ -2,16 +2,18 @@ import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
   WASocket,
-  proto
+  proto,
+  downloadContentFromMessage
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import path from 'path';
-import { IWhatsAppClient, IncomingMessage } from '../interfaces/IWhatsAppClient.js';
+import { IWhatsAppClient, IncomingMessage, DocumentAttachment } from '../interfaces/IWhatsAppClient.js';
 import { logAudit } from './db.js';
 
 export class WhatsAppService implements IWhatsAppClient {
   private sock: WASocket | null = null;
   private messageCallbacks: ((msg: IncomingMessage) => Promise<void> | void)[] = [];
+  private participantCallbacks: ((event: { groupJid: string; participants: string[]; action: 'add' | 'remove' }) => Promise<void> | void)[] = [];
 
   async connect(): Promise<void> {
     const sessionDir = path.join(process.cwd(), 'whatsapp_session');
@@ -50,6 +52,24 @@ export class WhatsAppService implements IWhatsAppClient {
       }
     });
 
+    // Listen for group participant changes
+    sock.ev.on('group-participants.update', async (update) => {
+      const { id: groupJid, participants, action } = update;
+      if (action === 'add' || action === 'remove') {
+        for (const callback of this.participantCallbacks) {
+          try {
+            await callback({ groupJid, participants, action });
+          } catch (err: any) {
+            await logAudit(
+              'ERROR',
+              'WHATSAPP_PARTICIPANT_CALLBACK_ERROR',
+              `Error in participant update callback: ${err.message}`
+            );
+          }
+        }
+      }
+    });
+
     // Listen for incoming messages
     sock.ev.on('messages.upsert', async (m) => {
       if (m.type === 'notify') {
@@ -63,16 +83,32 @@ export class WhatsAppService implements IWhatsAppClient {
                        msg.message?.extendedTextMessage?.text || 
                        '';
 
-          if (!text || !senderJid) continue;
+          // Extract document if present
+          const docMessage = msg.message?.documentMessage;
+          if (!senderJid) continue;
+          if (!text && !docMessage) continue;
+
+          let documentAttachment: DocumentAttachment | undefined;
+          if (docMessage) {
+            documentAttachment = {
+              fileName: docMessage.fileName || '',
+              mimetype: docMessage.mimetype || '',
+              mediaKey: docMessage.mediaKey instanceof Uint8Array ? docMessage.mediaKey : new Uint8Array(docMessage.mediaKey || []),
+              url: docMessage.url || '',
+              fileLength: typeof docMessage.fileLength === 'number' ? docMessage.fileLength : Number(docMessage.fileLength || 0),
+              directPath: docMessage.directPath || '',
+            };
+          }
 
           const isGroup = chatJid.endsWith('@g.us');
 
           const incoming: IncomingMessage = {
             senderJid,
             chatJid,
-            text,
+            text: text || docMessage?.caption || docMessage?.fileName || '',
             isGroup,
             timestamp: typeof msg.messageTimestamp === 'number' ? msg.messageTimestamp : Number(msg.messageTimestamp),
+            document: documentAttachment,
           };
 
           // Trigger registered callbacks
@@ -151,5 +187,44 @@ export class WhatsAppService implements IWhatsAppClient {
 
   onMessage(callback: (message: IncomingMessage) => Promise<void> | void): void {
     this.messageCallbacks.push(callback);
+  }
+
+  async getGroups(): Promise<{ id: string; subject: string }[]> {
+    if (!this.sock) throw new Error('WhatsApp client not initialized');
+    try {
+      const groups = await this.sock.groupFetchAllParticipating();
+      return Object.values(groups).map((g) => ({
+        id: g.id,
+        subject: g.subject,
+      }));
+    } catch (err: any) {
+      await logAudit('ERROR', 'WHATSAPP_GET_GROUPS_FAILED', `Failed to fetch groups: ${err.message}`);
+      throw err;
+    }
+  }
+
+  async downloadDocument(attachment: DocumentAttachment): Promise<Buffer> {
+    try {
+      const stream = await downloadContentFromMessage(
+        {
+          url: attachment.url,
+          mediaKey: attachment.mediaKey,
+          directPath: attachment.directPath,
+        },
+        'document'
+      );
+      const buffer: any[] = [];
+      for await (const chunk of stream) {
+        buffer.push(chunk);
+      }
+      return Buffer.concat(buffer);
+    } catch (err: any) {
+      await logAudit('ERROR', 'WHATSAPP_DOWNLOAD_FAIL', `Failed to download document: ${err.message}`);
+      throw err;
+    }
+  }
+
+  onGroupParticipantUpdate(callback: (event: { groupJid: string; participants: string[]; action: 'add' | 'remove' }) => Promise<void> | void): void {
+    this.participantCallbacks.push(callback);
   }
 }
