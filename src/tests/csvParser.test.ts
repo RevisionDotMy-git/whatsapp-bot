@@ -12,14 +12,14 @@ describe('CSV Roster Parser (Perspective: Nickname formatting & data cleaning)',
       name: 'form5-John Doe',
       originalName: 'John Doe',
       phone: '60123456789',
-      groupName: 'SPM Chemistry',
+      groupNames: ['SPM Chemistry'],
       level: '5',
     });
     expect(result[1]).toEqual({
       name: 'form4-Jane Smith',
       originalName: 'Jane Smith',
       phone: '60198765432',
-      groupName: 'SPM Physics',
+      groupNames: ['SPM Physics'],
       level: '4',
     });
   });
@@ -33,7 +33,7 @@ describe('CSV Roster Parser (Perspective: Nickname formatting & data cleaning)',
       name: 'form5-Lynxx',
       originalName: 'Lynxx',
       phone: '601110854085',
-      groupName: 'SPM Biology',
+      groupNames: ['SPM Biology'],
       level: '5',
     });
   });
@@ -60,6 +60,20 @@ describe('CSV Roster Parser (Perspective: Nickname formatting & data cleaning)',
 
     expect(result[0].name).toBe('John Doe');
     expect(result[0].level).toBe('');
+  });
+
+  it('should handle quoted commas and split multiple comma-separated groups', () => {
+    const csvContent = `name,phone,group,level\nLynxx,012233678,"SPM Physics, SPM Courses",5`;
+    const result = parseCsvString(csvContent);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      name: 'form5-Lynxx',
+      originalName: 'Lynxx',
+      phone: '6012233678', // cleaned & standardized Malaysian format
+      groupNames: ['SPM Physics', 'SPM Courses'],
+      level: '5',
+    });
   });
 });
 

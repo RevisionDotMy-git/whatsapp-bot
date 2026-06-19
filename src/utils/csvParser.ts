@@ -2,8 +2,33 @@ export interface ParsedStudentRow {
   name: string;      // Formatted as form[level]-[name] if level is present
   originalName: string;
   phone: string;     // Cleaned (digits only, e.g. "60123456789")
-  groupName: string; // The group / workshop name (e.g. "SPM Chemistry")
+  groupNames: string[]; // The list of group / workshop names (e.g. ["SPM Physics", "SPM Courses"])
   level: string;     // Level value if present (e.g. "5")
+  isValid: boolean;  // True if the row passed formatting validation
+  error?: string;    // Validation error details if invalid
+}
+
+/**
+ * Splits a CSV line taking quotes into account to allow commas inside quoted values.
+ */
+function splitCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"' || char === "'") {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result.map(col => col.replace(/^["']|["']$/g, '').trim());
 }
 
 /**
@@ -14,8 +39,8 @@ export function parseCsvString(csvText: string): ParsedStudentRow[] {
   const lines = csvText.split(/\r?\n/);
   if (lines.length <= 1) return [];
 
-  // Parse headers to find indexes (case-insensitive and trimmed)
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+  // Parse headers to find indexes (case-insensitive, trimmed, and spaces removed)
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, '').replace(/\s+/g, ''));
   
   // Header aliases mapping
   const nameIdx = headers.findIndex(h => ['name', 'fullname', 'studentname', 'student'].includes(h));
@@ -32,16 +57,30 @@ export function parseCsvString(csvText: string): ParsedStudentRow[] {
     const line = lines[i].trim();
     if (!line) continue;
 
-    // Split columns (handling basic CSV quotation)
-    const cols = line.split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
+    const cols = splitCsvLine(line);
     if (cols.length < Math.max(nameIdx, phoneIdx, groupIdx) + 1) continue;
 
     const originalName = cols[nameIdx];
-    const phone = cols[phoneIdx].replace(/\D/g, ''); // Keep only digits
-    const groupName = cols[groupIdx];
+    let phone = cols[phoneIdx].replace(/\D/g, ''); // Keep only digits
+    const rawGroup = cols[groupIdx];
     const levelVal = levelIdx !== -1 && cols[levelIdx] ? cols[levelIdx].trim() : '';
 
-    if (!originalName || !phone || !groupName) continue;
+    if (!originalName || !phone || !rawGroup) continue;
+
+    // Standardize Malaysian phone numbers
+    if (phone.startsWith('0')) {
+      phone = '60' + phone.substring(1);
+    }
+
+    // Validation: check phone length
+    const isValidPhone = phone.length >= 10 && phone.length <= 15;
+    let rowError: string | undefined;
+    if (!isValidPhone) {
+      rowError = `Invalid phone number: "${phone}" (must be 10-15 digits after prefixing)`;
+    }
+
+    // Split groupNames if comma-separated
+    const groupNames = rawGroup.split(',').map(g => g.trim()).filter(g => g.length > 0);
 
     // Nickname formatting logic: form[level]-[name]
     let formattedName = originalName;
@@ -60,8 +99,10 @@ export function parseCsvString(csvText: string): ParsedStudentRow[] {
       name: formattedName,
       originalName,
       phone,
-      groupName,
+      groupNames,
       level: levelVal,
+      isValid: !rowError,
+      error: rowError,
     });
   }
   

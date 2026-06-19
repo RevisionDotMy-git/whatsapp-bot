@@ -257,79 +257,86 @@ export class OrchestratorService {
       const summary: Record<string, { added: string[]; failed: string[] }> = {};
 
       for (const row of rows) {
-        // Find matching group (case-insensitive)
-        const matchingGroup = waGroups.find(
-          g => g.subject.toLowerCase() === row.groupName.toLowerCase()
-        );
-
-        if (!summary[row.groupName]) {
-          summary[row.groupName] = { added: [], failed: [] };
-        }
-
-        if (!matchingGroup) {
-          summary[row.groupName].failed.push(`${row.name} (Group not found)`);
-          continue;
-        }
-
-        const cleanPhone = row.phone.replace(/\D/g, '');
-        const studentJid = `${cleanPhone}@s.whatsapp.net`;
-
-        try {
-          // Add to WhatsApp group
-          await this.whatsapp.addParticipants(matchingGroup.id, [studentJid]);
-
-          // Find or link DB workshop
-          let dbWorkshop = await this.db.workshop.findFirst({
-            where: { whatsappJid: matchingGroup.id },
-          });
-
-          if (!dbWorkshop) {
-            // Fallback: search by subject name in DB
-            dbWorkshop = await this.db.workshop.findFirst({
-              where: { subject: { equals: matchingGroup.subject, mode: 'insensitive' } },
-            });
-            if (dbWorkshop) {
-              await this.db.workshop.update({
-                where: { id: dbWorkshop.id },
-                data: { whatsappJid: matchingGroup.id },
-              });
-            }
+        for (const targetGroupName of row.groupNames) {
+          if (!summary[targetGroupName]) {
+            summary[targetGroupName] = { added: [], failed: [] };
           }
 
-          if (dbWorkshop) {
-            // Register/enroll student in database
-            const dummyId = parseInt(cleanPhone.slice(-9), 10) || Math.floor(Math.random() * 100000000);
-            
-            const student = await this.db.student.upsert({
-              where: { phoneNumber: studentJid },
-              create: {
-                name: row.name,
-                phoneNumber: studentJid,
-                learndashId: dummyId,
-              },
-              update: {
-                name: row.name, // Keep nickname updated
-              },
+          if (!row.isValid) {
+            summary[targetGroupName].failed.push(`${row.name} (${row.error || 'Invalid format'})`);
+            continue;
+          }
+
+          // Find matching group (case-insensitive)
+          const matchingGroup = waGroups.find(
+            g => g.subject.toLowerCase() === targetGroupName.toLowerCase()
+          );
+
+          if (!matchingGroup) {
+            summary[targetGroupName].failed.push(`${row.name} (Group not found)`);
+            continue;
+          }
+
+          const cleanPhone = row.phone.replace(/\D/g, '');
+          const studentJid = `${cleanPhone}@s.whatsapp.net`;
+
+          try {
+            // Add to WhatsApp group
+            await this.whatsapp.addParticipants(matchingGroup.id, [studentJid]);
+
+            // Find or link DB workshop
+            let dbWorkshop = await this.db.workshop.findFirst({
+              where: { whatsappJid: matchingGroup.id },
             });
 
-            await this.db.studentWorkshop.upsert({
-              where: {
-                studentId_workshopId: {
+            if (!dbWorkshop) {
+              // Fallback: search by subject name in DB
+              dbWorkshop = await this.db.workshop.findFirst({
+                where: { subject: { equals: matchingGroup.subject, mode: 'insensitive' } },
+              });
+              if (dbWorkshop) {
+                await this.db.workshop.update({
+                  where: { id: dbWorkshop.id },
+                  data: { whatsappJid: matchingGroup.id },
+                });
+              }
+            }
+
+            if (dbWorkshop) {
+              // Register/enroll student in database
+              const dummyId = parseInt(cleanPhone.slice(-9), 10) || Math.floor(Math.random() * 100000000);
+              
+              const student = await this.db.student.upsert({
+                where: { phoneNumber: studentJid },
+                create: {
+                  name: row.name,
+                  phoneNumber: studentJid,
+                  learndashId: dummyId,
+                },
+                update: {
+                  name: row.name, // Keep nickname updated
+                },
+              });
+
+              await this.db.studentWorkshop.upsert({
+                where: {
+                  studentId_workshopId: {
+                    studentId: student.id,
+                    workshopId: dbWorkshop.id,
+                  },
+                },
+                create: {
                   studentId: student.id,
                   workshopId: dbWorkshop.id,
                 },
-              },
-              create: {
-                studentId: student.id,
-                workshopId: dbWorkshop.id,
-              },
-              update: {},
-            });
-          }
+                update: {},
+              });
+            }
 
-          summary[row.groupName].added.push(row.name);
-        } catch (err: any) {
-          summary[row.groupName].failed.push(`${row.name} (${err.message})`);
+            summary[targetGroupName].added.push(row.name);
+          } catch (err: any) {
+            summary[targetGroupName].failed.push(`${row.name} (${err.message})`);
+          }
         }
       }
 
