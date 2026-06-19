@@ -1,14 +1,14 @@
-import { GoogleGenAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ILLMClient, LLMEvaluationResult } from '../interfaces/ILLMClient.js';
 import { CONFIG } from '../config/constants.js';
 import { LLM_PROMPTS } from '../config/prompt.js';
 import { logAudit } from './db.js';
 
 export class LLMService implements ILLMClient {
-  private ai: GoogleGenAI;
+  private ai: GoogleGenerativeAI;
 
   constructor() {
-    this.ai = new GoogleGenAI({ apiKey: CONFIG.GEMINI.API_KEY });
+    this.ai = new GoogleGenerativeAI(CONFIG.GEMINI.API_KEY);
   }
 
   async evaluateEssay(
