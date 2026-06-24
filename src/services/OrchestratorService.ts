@@ -7,6 +7,54 @@ import { evaluateProgress } from '../utils/progressEvaluator.js';
 import { checkReminderDue } from '../utils/reminderScheduler.js';
 import { parseCsvString } from '../utils/csvParser.js';
 import { logAudit } from './db.js';
+import { CONFIG } from '../config/constants.js';
+import { resolveLessonsFromText } from '../utils/naturalLanguageParser.js';
+
+interface ParsedDueDate {
+  date: Date;
+  reason: string;
+}
+
+function parseDueDate(text: string | null | undefined): ParsedDueDate | null {
+  if (!text) return null;
+  const textLower = text.toLowerCase().trim();
+  const tomorrowMatch = textLower.match(/(?:this homework due|due|by|before)?\s*tomorrow/i);
+  const nextWeekMatch = textLower.match(/(?:this homework due|due|by|before)?\s*next\s*[-]?\s*week/i);
+  const nextMonthMatch = textLower.match(/(?:this homework due|due|by|before)?\s*next\s*[-]?\s*month/i);
+  const relativeMatch = text.match(/(?:this homework due|due|by|before)\s+(\d+)\s+days?/i);
+  const dateMatch = text.match(/(?:complete\s+it\s+before|before|due|by)\s+(\d{1,2})[-/](\d{1,2})(?:[-/](\d{2,4}))?/i);
+
+  if (tomorrowMatch && !relativeMatch && !dateMatch) {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return { date: d, reason: 'tomorrow' };
+  } else if (nextWeekMatch && !relativeMatch && !dateMatch) {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return { date: d, reason: 'next week' };
+  } else if (nextMonthMatch && !relativeMatch && !dateMatch) {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return { date: d, reason: 'next month' };
+  } else if (relativeMatch) {
+    const days = parseInt(relativeMatch[1], 10);
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return { date: d, reason: `${days} days` };
+  } else if (dateMatch) {
+    const day = parseInt(dateMatch[1], 10);
+    const month = parseInt(dateMatch[2], 10) - 1; // 0-indexed month
+    let year = dateMatch[3] ? parseInt(dateMatch[3], 10) : new Date().getFullYear();
+    if (year < 100) {
+      year += 2000;
+    }
+    const d = new Date(year, month, day, 23, 59, 59);
+    if (!isNaN(d.getTime())) {
+      return { date: d, reason: `${day}/${month + 1}/${year}` };
+    }
+  }
+  return null;
+}
 
 export class OrchestratorService {
   constructor(
@@ -46,13 +94,67 @@ export class OrchestratorService {
       }
     });
 
+    // Sync groups with DB whenever WhatsApp connection successfully opens
+    this.whatsapp.onConnectionOpen(() => {
+      // Add a configurable delay to let the socket stabilize and finish initial sync before fetching groups
+      setTimeout(async () => {
+        try {
+          await this.syncGroupsWithDb();
+        } catch (err: any) {
+          console.error('Failed to sync groups on connection open:', err);
+        }
+      }, CONFIG.WHATSAPP.SYNC_DELAY_MS);
+    });
+
     await logAudit('INFO', 'ORCHESTRATOR_START', 'Orchestrator engine started successfully.');
+  }
+
+  /**
+   * Syncs existing participating WhatsApp groups with database workshops based on matching names.
+   */
+  async syncGroupsWithDb(): Promise<void> {
+    try {
+      const groups = await this.whatsapp.getGroups();
+      const workshops = await this.db.workshop.findMany();
+
+      for (const workshop of workshops) {
+        const matchingGroup = groups.find(
+          (g) => g.subject.toLowerCase() === workshop.subject.toLowerCase()
+        );
+
+        if (matchingGroup && workshop.whatsappJid !== matchingGroup.id) {
+          await this.db.workshop.update({
+            where: { id: workshop.id },
+            data: { whatsappJid: matchingGroup.id },
+          });
+          await logAudit(
+            'INFO',
+            'GROUP_SYNC_LINK',
+            `Successfully linked workshop "${workshop.subject}" with WhatsApp group JID ${matchingGroup.id}`
+          );
+        }
+      }
+    } catch (err: any) {
+      await logAudit('ERROR', 'GROUP_SYNC_FAIL', `Failed syncing groups: ${err.message}`);
+    }
   }
 
   /**
    * Processes incoming WhatsApp messages and matches them against commands
    */
   private async handleMessage(msg: IncomingMessage): Promise<void> {
+    // Log the incoming message to database audit log
+    const contentDesc = msg.document 
+      ? `Document: ${msg.document.fileName} (${msg.document.mimetype})`
+      : `Text: "${msg.text}"`;
+    
+    await logAudit(
+      'INFO',
+      'WHATSAPP_MESSAGE_RECEIVED',
+      `Received message from ${msg.senderJid} (Group: ${msg.isGroup}, Chat JID: ${msg.chatJid}). Content: ${contentDesc}`,
+      msg.senderJid
+    );
+
     // Intercept CSV upload from Teacher
     if (msg.document) {
       const isCsv = msg.document.mimetype === 'text/csv' || 
@@ -82,8 +184,18 @@ export class OrchestratorService {
     });
 
     if (!workshop) {
-      // If student is DM-ing, find their enrolled workshop
-      if (!msg.isGroup) {
+      if (msg.isGroup) {
+        // If we couldn't find the workshop by JID, try to sync groups right now to see if this is a newly linked group!
+        await this.syncGroupsWithDb();
+        workshop = await this.db.workshop.findFirst({
+          where: { whatsappJid: msg.chatJid },
+          include: {
+            teacher: true,
+            students: { include: { student: true } },
+          },
+        });
+      } else {
+        // If student is DM-ing, find their enrolled workshop
         const studentEnrollment = await this.db.studentWorkshop.findFirst({
           where: { student: { phoneNumber: msg.senderJid } },
           include: { workshop: { include: { teacher: true, students: { include: { student: true } } } } },
@@ -92,6 +204,260 @@ export class OrchestratorService {
           workshop = studentEnrollment.workshop;
         }
       }
+    }
+
+    // Fallback: If still no workshop resolved, get the first available workshop in database (crucial for DM testing)
+    if (!workshop && !msg.isGroup) {
+      workshop = await this.db.workshop.findFirst({
+        include: {
+          teacher: true,
+          students: { include: { student: true } },
+        },
+      });
+    }
+
+    if (!workshop) {
+      await logAudit(
+        'WARN',
+        'WORKSHOP_NOT_FOUND',
+        `Could not resolve workshop for sender ${msg.senderJid} or chat ${msg.chatJid}`,
+        msg.senderJid
+      );
+    } else {
+      await logAudit(
+        'INFO',
+        'WORKSHOP_MATCHED',
+        `Resolved workshop "${workshop.subject}" (ID: ${workshop.id}) for chat ${msg.chatJid}`,
+        msg.senderJid
+      );
+    }
+
+    // Check for natural language LearnDash homework assignment from Teacher
+    if (workshop && msg.text && workshop.teacher.phoneNumber === msg.senderJid) {
+      const matchedLessons = resolveLessonsFromText(msg.text, 'data/learndash_cache.json');
+      if (matchedLessons.length > 0) {
+        // Calculate due date once for the entire message
+        const parsedDue = parseDueDate(msg.text);
+        const dueDate = parsedDue ? parsedDue.date : new Date();
+        if (!parsedDue) {
+          dueDate.setDate(dueDate.getDate() + 7); // Default 7 days
+        }
+
+        const confirmationLines: string[] = [];
+
+        for (const matched of matchedLessons) {
+          // Check if homework already exists for this workshop and lesson
+          let homework = await this.db.homework.findFirst({
+            where: {
+              workshopId: workshop.id,
+              lessonId: matched.lessonId
+            }
+          });
+
+          if (!homework) {
+            homework = await this.db.homework.create({
+              data: {
+                workshopId: workshop.id,
+                lessonId: matched.lessonId,
+                title: matched.lessonName,
+                dueDate
+              }
+            });
+
+            // Create initial ProgressLogs for all enrolled students
+            const enrollments = await this.db.studentWorkshop.findMany({
+              where: { workshopId: workshop.id },
+              include: { student: true }
+            });
+
+            for (const enrollment of enrollments) {
+              await this.db.progressLog.upsert({
+                where: {
+                  studentId_homeworkId: {
+                    studentId: enrollment.studentId,
+                    homeworkId: homework.id
+                  }
+                },
+                create: {
+                  studentId: enrollment.studentId,
+                  homeworkId: homework.id,
+                  status: 'NOT_STARTED'
+                },
+                update: {}
+              });
+            }
+
+            const auditDetails = `homework detected at ${new Date().toISOString()} with learndash link for lesson ID ${matched.lessonId}`;
+            await logAudit('INFO', 'CUSTOM_HOMEWORK_DETECTED', auditDetails, msg.senderJid);
+          } else {
+            // Update due date if already exists
+            await this.db.homework.update({
+              where: { id: homework.id },
+              data: { dueDate }
+            });
+            
+            const auditDetails = `homework due date updated to ${dueDate.toDateString()} for lesson ID ${matched.lessonId}`;
+            await logAudit('INFO', 'UPDATE_CUSTOM_HOMEWORK_DUE', auditDetails, msg.senderJid);
+          }
+
+          confirmationLines.push(
+            `📖 *Course*: ${matched.courseName}\n` +
+            `📝 *Homework*: ${matched.lessonName}\n` +
+            `🔗 *Lesson URL*: ${matched.hyperlink}`
+          );
+        }
+
+        const dueSuffix = parsedDue ? '' : ' (7 days by default)';
+        const replyText = 
+          `✅ *Homework Assigned via LearnDash!*\n\n` +
+          confirmationLines.join('\n\n') + `\n\n` +
+          `📅 *Due Date*: ${dueDate.toDateString()}${dueSuffix}\n\n` +
+          `*Bot assistant is now tracking student progress on LearnDash.*`;
+
+        await this.whatsapp.sendMessage(msg.chatJid, replyText);
+        return; // Stop processing
+      }
+    }
+
+    // Check if the message contains a Google Drive link
+    const googleLinkRegex = /(?:docs|drive|sheets|forms|slides)\.google\.com/i;
+    const hasGoogleLink = !!(msg.text && (googleLinkRegex.test(msg.text) || msg.text.includes('google.com/document') || msg.text.includes('google.com/file')));
+
+    // Handle Custom Homework due date overrides (only for text-only messages without Google Drive links)
+    if (workshop && !msg.document && !hasGoogleLink) {
+      const parsed = parseDueDate(msg.text);
+      if (parsed) {
+        // Find the latest custom homework (lessonId < 0) for this workshop
+        const latestCustomHomework = await this.db.homework.findFirst({
+          where: {
+            workshopId: workshop.id,
+            lessonId: { lt: 0 }
+          },
+          orderBy: {
+            lessonId: 'asc' // Ascending puts the most negative (most recent) first
+          }
+        });
+
+        if (latestCustomHomework) {
+          const createdTimestampSeconds = -latestCustomHomework.lessonId;
+          const currentTimestampSeconds = Math.floor(Date.now() / 1000);
+          const diffSeconds = currentTimestampSeconds - createdTimestampSeconds;
+
+          // If created in the last 10 minutes
+          if (diffSeconds < 600) {
+            await this.db.homework.update({
+              where: { id: latestCustomHomework.id },
+              data: { dueDate: parsed.date }
+            });
+
+            const logMsg = `homework due date updated to ${parsed.reason} for custom homework "${latestCustomHomework.title}"`;
+            await logAudit('INFO', 'UPDATE_CUSTOM_HOMEWORK_DUE', logMsg, msg.senderJid);
+
+            await this.whatsapp.sendMessage(
+              msg.chatJid,
+              `📅 *Homework Due Date Updated!*\n` +
+              `The due date for custom homework "${latestCustomHomework.title}" has been updated to: *${parsed.date.toDateString()}*.`
+            );
+            return; // Stop processing
+          }
+        }
+      }
+    }
+
+    // Detect new custom homework file/link
+    let fileFormat: string | null = null;
+    if (msg.document) {
+      const fileNameLower = (msg.document.fileName || '').toLowerCase();
+      const mimeLower = (msg.document.mimetype || '').toLowerCase();
+      if (fileNameLower.endsWith('.pdf') || mimeLower === 'application/pdf') {
+        fileFormat = 'pdf';
+      } else if (
+        fileNameLower.endsWith('.docx') || 
+        mimeLower === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        mimeLower === 'application/msword'
+      ) {
+        fileFormat = 'docx';
+      }
+      
+      await logAudit(
+        'INFO',
+        'DOCUMENT_ANALYSIS',
+        `Analyzing document: name="${msg.document.fileName}", mime="${msg.document.mimetype}". fileFormat matched: ${fileFormat || 'NONE'}`,
+        msg.senderJid
+      );
+    } else if (msg.text) {
+      if (hasGoogleLink) {
+        fileFormat = 'drive link';
+      }
+      
+      if (fileFormat) {
+        await logAudit(
+          'INFO',
+          'LINK_ANALYSIS',
+          `Matched Google Drive link in text. fileFormat matched: ${fileFormat}`,
+          msg.senderJid
+        );
+      }
+    }
+
+    if (fileFormat && workshop) {
+      const timestampSeconds = Math.floor(Date.now() / 1000);
+      const customLessonId = -timestampSeconds; // Negative lessonId as unique key and timestamp
+      const title = `Custom Homework (${fileFormat})`;
+      
+      // Parse due date from caption/text, default to 7 days if none or failed
+      const parsed = parseDueDate(msg.text);
+      const dueDate = parsed ? parsed.date : new Date();
+      if (!parsed) {
+        dueDate.setDate(dueDate.getDate() + 7); // Default 7 days
+      }
+
+      const homework = await this.db.homework.create({
+        data: {
+          workshopId: workshop.id,
+          lessonId: customLessonId,
+          title,
+          dueDate
+        }
+      });
+
+      // Log exactly: homework detected at [timestamp] with [file_format (pdf, docx, or drive link)]
+      const auditLogDetails = `homework detected at ${new Date().toISOString()} with ${fileFormat}`;
+      await logAudit('INFO', 'CUSTOM_HOMEWORK_DETECTED', auditLogDetails, msg.senderJid);
+
+      // Create initial ProgressLogs for all enrolled students in the workshop so it shows up in WebUI correctly
+      const enrollments = await this.db.studentWorkshop.findMany({
+        where: { workshopId: workshop.id },
+        include: { student: true }
+      });
+
+      for (const enrollment of enrollments) {
+        await this.db.progressLog.upsert({
+          where: {
+            studentId_homeworkId: {
+              studentId: enrollment.studentId,
+              homeworkId: homework.id
+            }
+          },
+          create: {
+            studentId: enrollment.studentId,
+            homeworkId: homework.id,
+            status: 'NOT_STARTED'
+          },
+          update: {}
+        });
+      }
+
+      const defaultSuffix = parsed ? '' : ' (7 days by default)';
+      await this.whatsapp.sendMessage(
+        msg.chatJid,
+        `📝 *Custom Homework Detected!*\n\n` +
+        `📂 *Type*: ${fileFormat.toUpperCase()}\n` +
+        `📅 *Due Date*: ${dueDate.toDateString()}${defaultSuffix}\n\n` +
+        `_You can reply with "this homework due 3 days" or "before DD/MM" to override the due date._`
+      );
+
+      return; // Stop processing
     }
 
     // Self-healing enrollment: if group message from someone in the group but not in DB
@@ -108,13 +474,13 @@ export class OrchestratorService {
             students: { include: { student: true } },
           },
         });
-        if (refreschedWorkshop) {
+        if (refreshedWorkshop) {
           workshop = refreshedWorkshop;
         }
       }
     }
 
-    if (!workshop) return; // No active workshop matched for this conversation JID
+    if (!workshop) return; // No active workshop matched for this conversation JID JID
 
     // Prepare list of student phone numbers in the workshop
     const studentJids = workshop.students.map(s => s.student.phoneNumber);
@@ -591,7 +957,7 @@ export class OrchestratorService {
   /**
    * Compiles a localized formatted progress report without utilizing LLM tokens
    */
-  private async compileProgressReport(workshopId: string): Promise<string> {
+  public async compileProgressReport(workshopId: string): Promise<string> {
     const workshop = await this.db.workshop.findUnique({
       where: { id: workshopId },
       include: {

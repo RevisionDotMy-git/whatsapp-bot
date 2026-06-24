@@ -28,5 +28,13 @@ export const CONFIG = {
     FIRST_REMINDER_DAYS: 3,
     // Number of days before the class to trigger the final reminder
     FINAL_REMINDER_DAYS: 1,
+  },
+  
+  WHATSAPP: {
+    DEFAULT_QUERY_TIMEOUT_MS: 90000,
+    CONNECT_TIMEOUT_MS: 90000,
+    KEEP_ALIVE_INTERVAL_MS: 10000,
+    SYNC_DELAY_MS: 5000,
+    FIRE_INIT_QUERIES: false,
   }
 };

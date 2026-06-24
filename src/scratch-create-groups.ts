@@ -52,7 +52,7 @@ async function run() {
   }
 
   const teacherJid = `${kwee.phone}@s.whatsapp.net`;
-  const studentJid = `${lynxx.phone}@s.whatsapp.net`;
+  const studentJid = '248030116757531@lid';
 
   log.info(`Teacher (Kwee) JID: ${teacherJid}`);
   log.info(`Student (Lynxx) JID: ${studentJid}`);
@@ -81,6 +81,19 @@ async function run() {
       log.success('WhatsApp connection successfully opened!');
       
       try {
+        // Send a private hello message to teacher (Kwee) and student (Lynxx)
+        log.info(`Sending hello message to teacher ${teacherJid}...`);
+        await sock.sendMessage(teacherJid, {
+          text: '👋 Hello Cikgu Kwee! This is a test DM from the WhatsApp online class assistant bot.'
+        });
+        log.success(`Sent hello to teacher!`);
+
+        log.info(`Sending hello message to student ${studentJid}...`);
+        await sock.sendMessage(studentJid, {
+          text: '👋 Hello Lynxx! This is a test DM from the WhatsApp online class assistant bot.'
+        });
+        log.success(`Sent hello to student!`);
+
         // Group definitions: Create group initially with teacher (valid JID)
         const groupsToCreate = [
           {
@@ -98,45 +111,87 @@ async function run() {
         ];
 
         for (const g of groupsToCreate) {
-          log.info(`Creating group: "${g.name}" with teacher: ${teacherJid}...`);
+          log.info(`Creating group: "${g.name}"...`);
           
           let groupMeta;
+          let teacherAdded = false;
+          let createdWithStudent = false;
+
           try {
             // Create Group with teacher initially
+            log.info(`Attempting to create group with teacher: ${teacherJid}...`);
             groupMeta = await sock.groupCreate(g.name, [teacherJid]);
-            log.success(`Group "${g.name}" created successfully! JID: ${groupMeta.id}`);
+            log.success(`Group "${g.name}" created successfully with teacher! JID: ${groupMeta.id}`);
+            teacherAdded = true;
           } catch (err: any) {
-            log.error(`Failed to create group "${g.name}": ${err.message}`);
-            continue;
-          }
-
-          // Send welcome message
-          await sock.sendMessage(groupMeta.id, {
-            text: `🤖 Welcome to *${g.name}*!\n\n👩‍🏫 Teacher Admin: *Kwee*\n👤 Student: *Lynxx*\n\nThis group has been automatically created and configured.`
-          });
-
-          // Promote Kwee to Admin
-          log.info(`Promoting teacher Kwee (${teacherJid}) to Admin in group "${g.name}"...`);
-          try {
-            await sock.groupParticipantsUpdate(groupMeta.id, [teacherJid], 'promote');
-            log.success(`Kwee successfully promoted to admin in "${g.name}"!`);
-          } catch (err: any) {
-            log.error(`Failed to promote Kwee to admin: ${err.message}`);
-          }
-
-          // Try adding students one by one
-          for (const student of g.students) {
-            log.info(`Attempting to add student ${student} to group "${g.name}"...`);
+            log.error(`Failed to create group "${g.name}" with teacher: ${err.message}`);
+            log.info(`Attempting fallback: create group with student: ${studentJid}...`);
             try {
-              await sock.groupParticipantsUpdate(groupMeta.id, [student], 'add');
-              log.success(`Successfully added student ${student} to "${g.name}"!`);
-            } catch (err: any) {
-              log.error(`Failed to add student ${student} to "${g.name}": ${err.message} (Number might be invalid or has group privacy restrictions).`);
+              groupMeta = await sock.groupCreate(g.name, [studentJid]);
+              log.success(`Group "${g.name}" created successfully with student! JID: ${groupMeta.id}`);
+              createdWithStudent = true;
+            } catch (studentErr: any) {
+              log.error(`Failed fallback: create group "${g.name}" with student: ${studentErr.message}`);
+              continue;
             }
           }
+
+          if (groupMeta) {
+            // Try to add teacher if not already added
+            if (!teacherAdded) {
+              log.info(`Attempting to add teacher Kwee (${teacherJid}) to group "${g.name}"...`);
+              try {
+                await sock.groupParticipantsUpdate(groupMeta.id, [teacherJid], 'add');
+                log.success(`Successfully added teacher Kwee to group "${g.name}"!`);
+                teacherAdded = true;
+              } catch (addErr: any) {
+                log.error(`Failed to add teacher Kwee: ${addErr.message} (Teacher must message the bot first).`);
+              }
+            }
+
+            // Promote teacher to Admin if in group
+            if (teacherAdded) {
+              log.info(`Promoting teacher Kwee (${teacherJid}) to Admin in group "${g.name}"...`);
+              try {
+                await sock.groupParticipantsUpdate(groupMeta.id, [teacherJid], 'promote');
+                log.success(`Kwee successfully promoted to admin in "${g.name}"!`);
+              } catch (promoteErr: any) {
+                log.error(`Failed to promote Kwee to admin: ${promoteErr.message}`);
+              }
+            }
+
+            // Add other students
+            for (const student of g.students) {
+              if (createdWithStudent && student === studentJid) {
+                // Already added during creation
+                continue;
+              }
+              log.info(`Attempting to add student ${student} to group "${g.name}"...`);
+              try {
+                await sock.groupParticipantsUpdate(groupMeta.id, [student], 'add');
+                log.success(`Successfully added student ${student} to "${g.name}"!`);
+              } catch (addStudentErr: any) {
+                log.error(`Failed to add student ${student} to "${g.name}": ${addStudentErr.message}`);
+              }
+            }
+
+            // Send welcome message
+            try {
+              await sock.sendMessage(groupMeta.id, {
+                text: `🤖 Welcome to *${g.name}*!\n\n👩‍🏫 Teacher Admin: *Kwee*\n👤 Student: *Lynxx*\n\nThis group has been automatically created and configured.`
+              });
+              log.success(`Sent welcome message to group "${g.name}".`);
+            } catch (sendErr: any) {
+              log.error(`Failed to send welcome message: ${sendErr.message}`);
+            }
+          }
+
+          // Delay to respect rate limits
+          log.info('Waiting 10 seconds before processing next group to respect WhatsApp rate limits...');
+          await new Promise(resolve => setTimeout(resolve, 10000));
         }
 
-        log.success('All groups created and configured successfully!');
+        log.success('All group creation tasks processed!');
       } catch (err: any) {
         log.error(`Failed during group orchestration: ${err.message}`);
       } finally {

@@ -66,4 +66,14 @@ export interface IWhatsAppClient {
    * Registers a listener callback for group participant updates (e.g. users joining or leaving)
    */
   onGroupParticipantUpdate(callback: (event: { groupJid: string; participants: string[]; action: 'add' | 'remove' }) => Promise<void> | void): void;
+
+  /**
+   * Returns true if the WhatsApp client is fully connected and ready to make requests
+   */
+  isConnected(): boolean;
+
+  /**
+   * Registers a callback for when connection transitions to open state
+   */
+  onConnectionOpen(callback: () => Promise<void> | void): void;
 }

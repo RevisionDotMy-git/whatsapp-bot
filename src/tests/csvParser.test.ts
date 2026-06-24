@@ -14,6 +14,8 @@ describe('CSV Roster Parser (Perspective: Nickname formatting & data cleaning)',
       phone: '60123456789',
       groupNames: ['SPM Chemistry'],
       level: '5',
+      isValid: true,
+      error: undefined,
     });
     expect(result[1]).toEqual({
       name: 'form4-Jane Smith',
@@ -21,6 +23,8 @@ describe('CSV Roster Parser (Perspective: Nickname formatting & data cleaning)',
       phone: '60198765432',
       groupNames: ['SPM Physics'],
       level: '4',
+      isValid: true,
+      error: undefined,
     });
   });
 
@@ -35,6 +39,8 @@ describe('CSV Roster Parser (Perspective: Nickname formatting & data cleaning)',
       phone: '601110854085',
       groupNames: ['SPM Biology'],
       level: '5',
+      isValid: true,
+      error: undefined,
     });
   });
 
@@ -73,6 +79,8 @@ describe('CSV Roster Parser (Perspective: Nickname formatting & data cleaning)',
       phone: '6012233678', // cleaned & standardized Malaysian format
       groupNames: ['SPM Physics', 'SPM Courses'],
       level: '5',
+      isValid: true,
+      error: undefined,
     });
   });
 });

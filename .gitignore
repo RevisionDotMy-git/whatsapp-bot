@@ -4,3 +4,7 @@ dist
 whatsapp_session
 *.log
 .gemini
+data/learndash_cache.json
+scratch
+src/scratch-*
+

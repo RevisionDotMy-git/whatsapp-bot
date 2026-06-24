@@ -1,24 +1,19 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Revision Workshop Manager - Setup Portal</title>
+  <title>Revision Workshop Manager - Testing Dashboard</title>
   
-  <!-- SEO Meta Tags -->
-  <meta name="description" content="Virtual online class management dashboard for Revision Workshops. Register courses, upload CSV rosters, and setup bot orchestration.">
+  <meta name="description" content="Virtual online class management dashboard for Revision Workshops. Setup classes, sync courses, assign homework, check progress, and evaluate audit logs.">
   
-  <!-- Premium Typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
-  <!-- Tailwind CSS Play CDN for rich aesthetics -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- FontAwesome for Premium Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
+  
   <script>
     tailwind.config = {
       theme: {
@@ -31,12 +26,14 @@
             brand: {
               50: '#f5f3ff',
               100: '#ede9fe',
+              400: '#a78bfa',
               500: '#8b5cf6',
               600: '#7c3aed',
               700: '#6d28d9',
               900: '#4c1d95',
             },
             dark: {
+              950: '#060814',
               900: '#0b0f19',
               800: '#151d30',
               700: '#1f2b48',
@@ -50,187 +47,548 @@
 
   <style>
     body {
-      background-color: #0b0f19;
+      background-color: #060814;
       color: #f3f4f6;
       font-family: 'Inter', sans-serif;
     }
     
     .glass-panel {
-      background: rgba(21, 29, 48, 0.7);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(21, 29, 48, 0.55);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.06);
     }
     
     .glass-input {
-      background: rgba(11, 15, 25, 0.5);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      transition: all 0.3s ease;
+      background: rgba(6, 8, 20, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     }
     
     .glass-input:focus {
       border-color: #8b5cf6;
-      box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+      box-shadow: 0 0 14px rgba(139, 92, 246, 0.25);
       outline: none;
     }
 
     .gradient-text {
-      background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 50%, #6366f1 100%);
+      background: linear-gradient(135deg, #c084fc 0%, #8b5cf6 50%, #6366f1 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
   </style>
 </head>
-<body class="min-h-screen flex flex-col justify-between py-8 px-4 sm:px-6 lg:px-8 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-brand-900/20 via-dark-900 to-dark-900">
+<body class="min-h-screen flex flex-col justify-between bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-brand-900/15 via-dark-900 to-dark-950">
 
-  <main class="max-w-4xl w-full mx-auto my-auto space-y-8">
-    <!-- Header -->
-    <div class="text-center space-y-3">
-      <div class="inline-flex items-center justify-center p-3 bg-brand-600/10 rounded-2xl border border-brand-500/20 mb-2">
-        <i class="fa-solid fa-graduation-cap text-3xl text-brand-500"></i>
+  <!-- Main Container -->
+  <div class="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-grow flex flex-col space-y-6">
+    
+    <!-- Top Header -->
+    <header class="flex flex-col md:flex-row md:items-center md:justify-between pb-4 border-b border-white/5 space-y-4 md:space-y-0">
+      <div class="flex items-center space-x-3">
+        <div class="p-2.5 bg-brand-600/10 rounded-xl border border-brand-500/20">
+          <i class="fa-solid fa-square-poll-vertical text-2xl text-brand-400"></i>
+        </div>
+        <div>
+          <h1 class="text-2xl font-extrabold font-outfit text-white tracking-tight flex items-center">
+            Revision <span class="gradient-text ml-1.5 font-black">Workshop</span>
+          </h1>
+          <p class="text-xs text-gray-400">Local Testing & Investigation Dashboard Portal</p>
+        </div>
       </div>
-      <h1 class="text-4xl sm:text-5xl font-extrabold font-outfit tracking-tight text-white">
-        Revision <span class="gradient-text">Workshop</span> Setup
-      </h1>
-      <p class="text-gray-400 max-w-lg mx-auto text-sm sm:text-base">
-        Register class metadata, define LearnDash mapping, and upload your student roster to kickstart WhatsApp automation.
-      </p>
-    </div>
-
-    <!-- Main Form Panel -->
-    <div class="glass-panel rounded-3xl p-6 sm:p-8 shadow-2xl space-y-8">
       
-      <!-- Stepper Indicator -->
-      <div class="flex items-center justify-between max-w-md mx-auto border-b border-white/5 pb-6">
-        <div class="flex items-center space-x-3">
-          <span id="step1-badge" class="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm bg-brand-600 text-white">1</span>
-          <span class="text-sm font-medium text-white">Class Metadata</span>
-        </div>
-        <div class="flex-grow h-[1px] bg-white/10 mx-4"></div>
-        <div class="flex items-center space-x-3">
-          <span id="step2-badge" class="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm bg-dark-700 text-gray-400">2</span>
-          <span class="text-sm font-medium text-gray-400">Roster Import</span>
-        </div>
+      <!-- Current Time / Server indicator -->
+      <div class="flex items-center space-x-3 text-xs bg-dark-800/60 px-4 py-2 rounded-xl border border-white/5 self-start">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span class="text-gray-300 font-medium">Local Server Port: 4000</span>
       </div>
+    </header>
 
-      <!-- Step 1: Form Details -->
-      <div id="step-1-content" class="space-y-6">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <!-- Subject -->
-          <div>
-            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2" for="subject">Subject / Class Name</label>
-            <input class="glass-input w-full px-4 py-3 rounded-xl text-white text-sm" type="text" id="subject" placeholder="e.g. Form 5 Physics Revision" required>
-          </div>
-          <!-- Course ID -->
-          <div>
-            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2" for="courseId">LearnDash Course ID</label>
-            <input class="glass-input w-full px-4 py-3 rounded-xl text-white text-sm" type="number" id="courseId" placeholder="e.g. 1024" required>
-          </div>
-          <!-- Meeting Link -->
-          <div class="md:col-span-2">
-            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2" for="meetingLink">Class Meet/Zoom Link</label>
-            <input class="glass-input w-full px-4 py-3 rounded-xl text-white text-sm" type="url" id="meetingLink" placeholder="https://meet.google.com/abc-defg-hij">
-          </div>
-          <!-- Class Day -->
-          <div>
-            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2" for="classDay">Weekly Class Day</label>
-            <select class="glass-input w-full px-4 py-3 rounded-xl text-white text-sm" id="classDay">
-              <option value="0">Sunday</option>
-              <option value="1">Monday</option>
-              <option value="2">Tuesday</option>
-              <option value="3">Wednesday</option>
-              <option value="4">Thursday</option>
-              <option value="5">Friday</option>
-              <option value="6">Saturday</option>
-            </select>
-          </div>
-          <!-- Class Time -->
-          <div>
-            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2" for="classTime">Weekly Class Time</label>
-            <input class="glass-input w-full px-4 py-3 rounded-xl text-white text-sm" type="time" id="classTime" required>
-          </div>
-          <!-- Teacher Name -->
-          <div>
-            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2" for="teacherName">Teacher Name</label>
-            <input class="glass-input w-full px-4 py-3 rounded-xl text-white text-sm" type="text" id="teacherName" placeholder="e.g. Teacher Sarah" required>
-          </div>
-          <!-- Teacher Phone -->
-          <div>
-            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2" for="teacherPhone">Teacher WhatsApp JID / Phone</label>
-            <input class="glass-input w-full px-4 py-3 rounded-xl text-white text-sm" type="text" id="teacherPhone" placeholder="e.g. 60123456789@s.whatsapp.net" required>
-          </div>
-        </div>
+    <!-- Tab Navigation Bar -->
+    <nav class="flex flex-wrap gap-2 p-1.5 bg-dark-800/40 rounded-2xl border border-white/5 max-w-fit">
+      <button onclick="switchTab('classes')" id="tab-classes" class="px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 transition-all duration-200 bg-brand-600 text-white shadow-lg shadow-brand-600/20">
+        <i class="fa-solid fa-graduation-cap"></i>
+        <span>Classes & Setup</span>
+      </button>
+      <button onclick="switchTab('learndash')" id="tab-learndash" class="px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 transition-all duration-200 text-gray-400 hover:text-white hover:bg-white/5">
+        <i class="fa-solid fa-arrows-spin"></i>
+        <span>LearnDash Sync</span>
+      </button>
+      <button onclick="switchTab('homework')" id="tab-homework" class="px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 transition-all duration-200 text-gray-400 hover:text-white hover:bg-white/5">
+        <i class="fa-solid fa-book-open"></i>
+        <span>Homework Manager</span>
+      </button>
+      <button onclick="switchTab('reminders')" id="tab-reminders" class="px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 transition-all duration-200 text-gray-400 hover:text-white hover:bg-white/5">
+        <i class="fa-solid fa-bell"></i>
+        <span>Reminders & Alerts</span>
+      </button>
+      <button onclick="switchTab('reports')" id="tab-reports" class="px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 transition-all duration-200 text-gray-400 hover:text-white hover:bg-white/5">
+        <i class="fa-solid fa-chart-line"></i>
+        <span>Progress Reports</span>
+      </button>
+      <button onclick="switchTab('logs')" id="tab-logs" class="px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 transition-all duration-200 text-gray-400 hover:text-white hover:bg-white/5">
+        <i class="fa-solid fa-receipt"></i>
+        <span>Audit Logs</span>
+      </button>
+    </nav>
 
-        <div class="flex justify-end pt-4">
-          <button onclick="goToStep2()" class="px-6 py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-sm font-medium flex items-center space-x-2 transition shadow-lg shadow-brand-500/25">
-            <span>Continue to Roster</span>
-            <i class="fa-solid fa-arrow-right"></i>
-          </button>
-        </div>
-      </div>
+    <!-- CONTENT MODULES -->
+    <div class="flex-grow flex flex-col">
 
-      <!-- Step 2: Student Upload -->
-      <div id="step-2-content" class="hidden space-y-6">
-        
-        <div class="flex justify-between items-center bg-dark-800 p-4 rounded-2xl border border-white/5">
-          <div class="space-y-1">
-            <h3 class="text-sm font-semibold text-white">Roster CSV Format</h3>
-            <p class="text-xs text-gray-400">Ensure columns: <code>name</code>, <code>phoneNumber</code>, <code>learndashId</code></p>
-          </div>
-          <button onclick="downloadCSVTemplate()" class="text-xs bg-white/10 hover:bg-white/15 text-white px-3 py-2 rounded-lg font-medium flex items-center space-x-1.5 transition">
-            <i class="fa-solid fa-download"></i>
-            <span>Get Template</span>
-          </button>
-        </div>
-
-        <!-- Drag & Drop Zone -->
-        <div class="border-2 border-dashed border-white/10 hover:border-brand-500/50 rounded-2xl p-8 text-center cursor-pointer transition relative bg-dark-900/30">
-          <input type="file" id="csvFileInput" accept=".csv" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleCSVFile(event)">
-          <div class="space-y-3 pointer-events-none">
-            <i class="fa-solid fa-file-csv text-4xl text-brand-500/80"></i>
-            <div class="text-sm font-semibold text-white">Click or drag & drop CSV roster file</div>
-            <p class="text-xs text-gray-400">Only standard .csv file format is supported</p>
-          </div>
-        </div>
-
-        <!-- Student List Preview -->
-        <div class="space-y-3">
-          <h3 class="text-sm font-semibold text-gray-300">Roster Preview (<span id="student-count">0</span> students loaded)</h3>
+      <!-- TAB: CLASSES & SETUP -->
+      <section id="content-classes" class="space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          <div class="max-h-60 overflow-y-auto rounded-xl border border-white/5 bg-dark-900/50">
+          <!-- Registration form -->
+          <div class="lg:col-span-2 glass-panel rounded-2xl p-6 shadow-xl space-y-6">
+            <div>
+              <h2 class="text-lg font-bold font-outfit text-white flex items-center space-x-2">
+                <i class="fa-solid fa-folder-plus text-brand-400"></i>
+                <span>Register Revision Workshop Class</span>
+              </h2>
+              <p class="text-xs text-gray-400 mt-1">Add workshop metadata and link it to WordPress LearnDash</p>
+            </div>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="subject">Workshop Subject</label>
+                <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="text" id="subject" placeholder="e.g. SPM Physics Complete">
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="courseId">LearnDash Course ID</label>
+                <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="number" id="courseId" placeholder="e.g. 101">
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="meetingLink">Class Meet Link</label>
+                <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="url" id="meetingLink" placeholder="https://meet.google.com/abc-defg-hij">
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="classDay">Class Day</label>
+                <select class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" id="classDay">
+                  <option value="0">Sunday</option>
+                  <option value="1">Monday</option>
+                  <option value="2">Tuesday</option>
+                  <option value="3">Wednesday</option>
+                  <option value="4">Thursday</option>
+                  <option value="5">Friday</option>
+                  <option value="6">Saturday</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="classTime">Class Time</label>
+                <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="time" id="classTime" value="20:00">
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="teacherName">Teacher Name</label>
+                <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="text" id="teacherName" placeholder="e.g. Cikgu Sarah">
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="teacherPhone">Teacher Phone / JID</label>
+                <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="text" id="teacherPhone" placeholder="e.g. 60122082435">
+              </div>
+            </div>
+
+            <!-- CSV Upload Panel Inside setup -->
+            <div class="border-t border-white/5 pt-5 space-y-4">
+              <div>
+                <h3 class="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center space-x-1.5">
+                  <i class="fa-solid fa-file-csv text-brand-400"></i>
+                  <span>Import Students (CSV Roster)</span>
+                </h3>
+                <p class="text-[11px] text-gray-400">Specify columns: <code>name</code>, <code>phoneNumber</code>, <code>learndashId</code>, <code>level</code> (for auto prefixing like <code>form5-name</code>)</p>
+              </div>
+
+              <div class="flex items-center space-x-3">
+                <div class="flex-grow relative border border-dashed border-white/10 hover:border-brand-500/50 rounded-xl p-4 text-center bg-dark-900/35 transition cursor-pointer">
+                  <input type="file" id="csvFile" accept=".csv" onchange="parseCSV(event)" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                  <span class="text-xs font-medium text-gray-300" id="csv-label"><i class="fa-solid fa-upload mr-1.5"></i>Upload student roster CSV</span>
+                </div>
+                <button onclick="downloadTemplate()" class="px-3.5 py-2.5 bg-dark-800 text-gray-300 hover:text-white rounded-xl border border-white/5 text-xs transition flex items-center space-x-1">
+                  <i class="fa-solid fa-file-arrow-down"></i>
+                  <span>Template</span>
+                </button>
+              </div>
+
+              <!-- List preview table -->
+              <div id="preview-section" class="hidden space-y-2">
+                <h4 class="text-xs font-semibold text-gray-400">Roster Preview:</h4>
+                <div class="max-h-40 overflow-y-auto rounded-xl border border-white/5 custom-scrollbar bg-dark-950/40">
+                  <table class="w-full text-left text-xs border-collapse">
+                    <thead class="sticky top-0 bg-dark-800/90 text-gray-400 border-b border-white/5 uppercase tracking-wider font-semibold">
+                      <tr>
+                        <th class="px-3 py-2 text-[10px]">Formatted Name</th>
+                        <th class="px-3 py-2 text-[10px]">WhatsApp Phone</th>
+                        <th class="px-3 py-2 text-[10px]">LD ID</th>
+                      </tr>
+                    </thead>
+                    <tbody id="roster-tbody" class="text-gray-300 divide-y divide-white/5"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex justify-end pt-2">
+              <button onclick="createClass()" class="px-6 py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold transition flex items-center space-x-2 shadow-lg shadow-brand-600/25">
+                <i class="fa-solid fa-circle-check"></i>
+                <span>Register Class & Import Roster</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Existing classes list -->
+          <div class="glass-panel rounded-2xl p-6 shadow-xl space-y-4">
+            <h2 class="text-lg font-bold font-outfit text-white flex items-center space-x-2">
+              <i class="fa-solid fa-list-check text-brand-400"></i>
+              <span>Registered Classes</span>
+            </h2>
+            
+            <div id="class-list-loading" class="text-center py-10 text-xs text-gray-500">
+              <i class="fa-solid fa-circle-notch animate-spin text-lg text-brand-500 mb-2"></i>
+              <p>Fetching workshops...</p>
+            </div>
+
+            <div id="class-list" class="space-y-3 max-h-[550px] overflow-y-auto custom-scrollbar pr-1 hidden">
+              <!-- Dynamically populated workshops -->
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- TAB: LEARNDASH SYNC -->
+      <section id="content-learndash" class="hidden space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          
+          <!-- Select Course and Fetch Lessons -->
+          <div class="glass-panel rounded-2xl p-6 shadow-xl space-y-6">
+            <h2 class="text-lg font-bold font-outfit text-white flex items-center space-x-2">
+              <i class="fa-solid fa-cloud-arrow-down text-brand-400"></i>
+              <span>LearnDash Course Explorer</span>
+            </h2>
+            
+            <div class="space-y-4">
+              <div>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Select LearnDash Course</label>
+                <select id="ld-courses-select" onchange="fetchLessonsForCourse(this.value)" class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs">
+                  <option value="">-- Choose Course --</option>
+                </select>
+              </div>
+
+              <div class="pt-2">
+                <button onclick="triggerLearnDashSync()" id="ld-sync-btn" class="w-full px-4 py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow-lg shadow-brand-600/25">
+                  <i class="fa-solid fa-sync" id="ld-sync-icon"></i>
+                  <span id="ld-sync-text">Force Sync LearnDash Cache</span>
+                </button>
+              </div>
+
+              <div class="bg-brand-500/5 border border-brand-500/10 p-4 rounded-xl space-y-2">
+                <h3 class="text-xs font-semibold text-brand-400 flex items-center space-x-1">
+                  <i class="fa-solid fa-circle-info"></i>
+                  <span>Sync Mechanism</span>
+                </h3>
+                <p class="text-[11px] text-gray-400 leading-relaxed">
+                  Serves course and lesson data instantaneously from a local JSON cache. Click the button above to sync the cache with live LearnDash WordPress records.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Lessons list -->
+          <div class="md:col-span-2 glass-panel rounded-2xl p-6 shadow-xl space-y-4">
+            <h2 class="text-lg font-bold font-outfit text-white flex items-center space-x-2">
+              <i class="fa-solid fa-list-ol text-brand-400"></i>
+              <span>Course Lesson Outline</span>
+            </h2>
+
+            <div id="lessons-outline-loading" class="hidden text-center py-12 text-xs text-gray-500">
+              <i class="fa-solid fa-circle-notch animate-spin text-lg text-brand-500 mb-2"></i>
+              <p>Fetching lessons...</p>
+            </div>
+
+            <div id="lessons-outline-empty" class="text-center py-16 text-xs text-gray-500">
+              <i class="fa-solid fa-layer-group text-2xl text-gray-600 mb-2"></i>
+              <p>Select a course on the left to inspect its lesson structure.</p>
+            </div>
+
+            <div id="lessons-outline" class="hidden space-y-2.5 max-h-96 overflow-y-auto custom-scrollbar pr-1">
+              <!-- Dynamically populated lessons -->
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- TAB: HOMEWORK MANAGER -->
+      <section id="content-homework" class="hidden space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          
+          <!-- Register Homework Form -->
+          <div class="glass-panel rounded-2xl p-6 shadow-xl space-y-6">
+            <h2 class="text-lg font-bold font-outfit text-white flex items-center space-x-2">
+              <i class="fa-solid fa-calendar-plus text-brand-400"></i>
+              <span>Register Class Homework</span>
+            </h2>
+
+            <div class="space-y-4">
+              <div>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="hw-workshop">Target Workshop</label>
+                <select id="hw-workshop" onchange="onHomeworkWorkshopChange(this.value)" class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs">
+                  <option value="">-- Choose Workshop --</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="hw-lessonId">LearnDash Lesson / Topic</label>
+                <select id="hw-lessonId" class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs">
+                  <option value="">-- Select Workshop First --</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="hw-dueDate">Homework Due Date</label>
+                <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="date" id="hw-dueDate">
+              </div>
+
+              <div class="pt-2">
+                <button onclick="registerHomework()" class="w-full px-5 py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow-lg shadow-brand-600/25">
+                  <i class="fa-solid fa-circle-check"></i>
+                  <span>Register Homework Task</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Existing Homeworks list -->
+          <div class="md:col-span-2 glass-panel rounded-2xl p-6 shadow-xl space-y-4">
+            <h2 class="text-lg font-bold font-outfit text-white flex items-center space-x-2">
+              <i class="fa-solid fa-folder-open text-brand-400"></i>
+              <span>Active Homework Assignments</span>
+            </h2>
+
+            <div class="flex items-center space-x-3 mb-2">
+              <label class="text-xs text-gray-400">Filter Workshop:</label>
+              <select id="hw-filter-select" onchange="filterHomeworkList(this.value)" class="glass-input px-3 py-1.5 rounded-xl text-white text-xs">
+                <option value="">All Workshops</option>
+              </select>
+            </div>
+
+            <div id="homework-list-empty" class="text-center py-16 text-xs text-gray-500">
+              <i class="fa-solid fa-book text-2xl text-gray-600 mb-2"></i>
+              <p>No homework assignments registered yet. Set one up on the left.</p>
+            </div>
+
+            <div id="homework-list" class="hidden space-y-3 max-h-96 overflow-y-auto custom-scrollbar pr-1">
+              <!-- Dynamically populated homework list -->
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- TAB: REMINDERS & ALERTS -->
+      <section id="content-reminders" class="hidden space-y-6">
+        <div class="glass-panel rounded-2xl p-6 shadow-xl space-y-6">
+          
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
+            <div>
+              <h2 class="text-lg font-bold font-outfit text-white flex items-center space-x-2">
+                <i class="fa-solid fa-clock-rotate-left text-brand-400"></i>
+                <span>Homework Progress Validation & Reminders</span>
+              </h2>
+              <p class="text-xs text-gray-400 mt-1">Audit student completion status on WordPress and simulate DM dispatches</p>
+            </div>
+
+            <button onclick="triggerReminders()" class="px-5 py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold transition flex items-center space-x-2 shadow-lg shadow-brand-600/25 self-start sm:self-auto">
+              <i class="fa-solid fa-bolt"></i>
+              <span>Trigger Reminder Cron Cycle</span>
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 pt-2">
+            
+            <!-- Filter sidebar -->
+            <div class="space-y-4">
+              <div>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Selected Workshop</label>
+                <select id="reminder-workshop-select" onchange="fetchStudentsForReminder(this.value)" class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs">
+                  <option value="">-- Choose Workshop --</option>
+                </select>
+              </div>
+
+              <div class="bg-dark-800/80 p-4 rounded-xl border border-white/5 space-y-3">
+                <h3 class="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center space-x-1">
+                  <i class="fa-solid fa-circle-exclamation text-brand-400"></i>
+                  <span>Evaluation Rules</span>
+                </h3>
+                <ul class="text-[11px] text-gray-400 space-y-2 leading-relaxed list-disc pl-4">
+                  <li>Fetches real course progress from LearnDash using WP User ID.</li>
+                  <li>Checks if the assigned Lesson ID step is completed.</li>
+                  <li>Saves status logs locally in the database.</li>
+                  <li>Dispatches simulated WhatsApp DMs to students who are lagging behind.</li>
+                </ul>
+              </div>
+            </div>
+
+            <!-- Student progress list -->
+            <div class="lg:col-span-3 space-y-4">
+              <h3 class="text-sm font-semibold text-white">Student Progress Evaluation Matrix</h3>
+              
+              <div id="reminder-matrix-empty" class="text-center py-16 text-xs text-gray-500 border border-white/5 rounded-2xl bg-dark-900/30">
+                <i class="fa-solid fa-users-viewfinder text-3xl text-gray-600 mb-2"></i>
+                <p>Select a class on the left to see the student progress evaluation matrix.</p>
+              </div>
+
+              <div id="reminder-matrix-loading" class="hidden text-center py-12 text-xs text-gray-500">
+                <i class="fa-solid fa-circle-notch animate-spin text-lg text-brand-500 mb-2"></i>
+                <p>Loading students progress matrix...</p>
+              </div>
+
+              <div id="reminder-matrix" class="hidden max-h-96 overflow-y-auto custom-scrollbar border border-white/5 rounded-xl bg-dark-900/25">
+                <table class="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr class="bg-dark-800 text-gray-400 border-b border-white/5 uppercase tracking-wider font-semibold text-[10px]">
+                      <th class="px-4 py-3">Student</th>
+                      <th class="px-4 py-3">WhatsApp Number</th>
+                      <th class="px-4 py-3">LearnDash ID</th>
+                      <th class="px-4 py-3">Roster Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reminder-tbody" class="text-gray-300 divide-y divide-white/5">
+                    <!-- Dynamic -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
+      <!-- TAB: PROGRESS REPORTS -->
+      <section id="content-reports" class="hidden space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          
+          <!-- Selector Panel -->
+          <div class="glass-panel rounded-2xl p-6 shadow-xl space-y-5">
+            <h2 class="text-lg font-bold font-outfit text-white flex items-center space-x-2">
+              <i class="fa-solid fa-chart-pie text-brand-400"></i>
+              <span>Generate Progress Report</span>
+            </h2>
+
+            <div class="space-y-4">
+              <div>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Workshop Subject</label>
+                <select id="report-workshop-select" class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs">
+                  <option value="">-- Choose Workshop --</option>
+                </select>
+              </div>
+
+              <button onclick="generateReport()" class="w-full px-5 py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow-lg shadow-brand-600/25">
+                <i class="fa-solid fa-calculator"></i>
+                <span>Compile Report Payload</span>
+              </button>
+            </div>
+
+            <div class="bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-xl space-y-2">
+              <h3 class="text-xs font-semibold text-emerald-400 flex items-center space-x-1">
+                <i class="fa-solid fa-check-double"></i>
+                <span>Report Components</span>
+              </h3>
+              <p class="text-[11px] text-gray-400 leading-relaxed">
+                Calculates completion rates and maps out students' statuses (🟢 Completed, 🟡 In Progress, 🔴 Not Started). In the production orchestrator, this report is pushed directly to the teacher's WhatsApp DM.
+              </p>
+            </div>
+          </div>
+
+          <!-- Report Display -->
+          <div class="md:col-span-2 glass-panel rounded-2xl p-6 shadow-xl space-y-4">
+            <h2 class="text-lg font-bold font-outfit text-white flex items-center space-x-2">
+              <i class="fa-solid fa-file-invoice text-brand-400"></i>
+              <span>Report Details</span>
+            </h2>
+
+            <div id="report-output-empty" class="text-center py-20 text-xs text-gray-500">
+              <i class="fa-solid fa-receipt text-3xl text-gray-600 mb-2"></i>
+              <p>Select a class and click "Compile" to generate the summary report here.</p>
+            </div>
+
+            <div id="report-output-loading" class="hidden text-center py-16 text-xs text-gray-500">
+              <i class="fa-solid fa-circle-notch animate-spin text-lg text-brand-500 mb-2"></i>
+              <p>Compiling report statistics...</p>
+            </div>
+
+            <div id="report-output" class="hidden space-y-4">
+              <div class="bg-dark-950 p-5 rounded-2xl border border-white/5 font-mono text-[11px] text-emerald-400/90 whitespace-pre-wrap leading-relaxed custom-scrollbar max-h-96 overflow-y-auto" id="report-text">
+                <!-- Dynamically populated report text -->
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- TAB: AUDIT LOGS -->
+      <section id="content-logs" class="hidden space-y-6">
+        <div class="glass-panel rounded-2xl p-6 shadow-xl space-y-4">
+          <div class="flex items-center justify-between border-b border-white/5 pb-4">
+            <div>
+              <h2 class="text-lg font-bold font-outfit text-white flex items-center space-x-2">
+                <i class="fa-solid fa-database text-brand-400"></i>
+                <span>Database Audit Trails</span>
+              </h2>
+              <p class="text-xs text-gray-400">Recent system operations, integrations, and event updates</p>
+            </div>
+            <button onclick="fetchAuditLogs()" class="px-3.5 py-2.5 bg-dark-800 hover:bg-dark-700 text-gray-300 hover:text-white rounded-xl border border-white/5 text-xs transition flex items-center space-x-1.5">
+              <i class="fa-solid fa-rotate"></i>
+              <span>Refresh Logs</span>
+            </button>
+          </div>
+
+          <div id="audit-logs-loading" class="text-center py-12 text-xs text-gray-500">
+            <i class="fa-solid fa-circle-notch animate-spin text-lg text-brand-500 mb-2"></i>
+            <p>Fetching logs...</p>
+          </div>
+
+          <div id="audit-logs" class="hidden max-h-[500px] overflow-y-auto custom-scrollbar border border-white/5 rounded-xl bg-dark-950/20">
             <table class="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr class="bg-dark-800 text-gray-400 border-b border-white/5 uppercase tracking-wider font-semibold">
-                  <th class="px-4 py-3">Name</th>
-                  <th class="px-4 py-3">WhatsApp Phone</th>
-                  <th class="px-4 py-3">LearnDash User ID</th>
+              <thead class="sticky top-0 bg-dark-800 text-gray-400 border-b border-white/5 uppercase tracking-wider font-semibold text-[9px]">
+                <tr>
+                  <th class="px-4 py-3">Timestamp</th>
+                  <th class="px-4 py-3">Level</th>
+                  <th class="px-4 py-3">Action</th>
+                  <th class="px-4 py-3">Details</th>
+                  <th class="px-4 py-3">Operator</th>
                 </tr>
               </thead>
-              <tbody id="student-table-body" class="text-gray-300 divide-y divide-white/5">
-                <tr>
-                  <td colspan="3" class="px-4 py-6 text-center text-gray-500">No students loaded yet. Please upload a roster.</td>
-                </tr>
+              <tbody id="logs-tbody" class="text-gray-300 divide-y divide-white/5 font-mono text-[10px]">
+                <!-- Dynamic -->
               </tbody>
             </table>
           </div>
         </div>
-
-        <div class="flex justify-between items-center pt-4 border-t border-white/5">
-          <button onclick="goToStep1()" class="px-5 py-3 text-gray-400 hover:text-white text-sm font-medium flex items-center space-x-1.5 transition">
-            <i class="fa-solid fa-arrow-left"></i>
-            <span>Back</span>
-          </button>
-          <button onclick="submitWorkshop()" class="px-6 py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-sm font-medium flex items-center space-x-2 transition shadow-lg shadow-brand-500/25">
-            <i class="fa-solid fa-circle-check"></i>
-            <span>Create & Orchestrate Bot</span>
-          </button>
-        </div>
-      </div>
+      </section>
 
     </div>
-  </main>
+  </div>
 
-  <!-- Notification Banner -->
+  <!-- Notification Toast Banner -->
   <div id="toast" class="fixed bottom-4 right-4 max-w-sm w-full bg-dark-800 border border-brand-500/20 text-white p-4 rounded-xl shadow-2xl flex items-start space-x-3 transition duration-300 transform translate-y-24 opacity-0 z-50">
     <div class="p-1 rounded-lg bg-brand-500/10 text-brand-500" id="toast-icon">
       <i class="fa-solid fa-circle-info"></i>
@@ -242,181 +600,48 @@
     <button onclick="hideToast()" class="text-gray-400 hover:text-white transition"><i class="fa-solid fa-xmark text-sm"></i></button>
   </div>
 
-  <footer class="text-center text-xs text-gray-500 pt-8 font-medium">
-    Revision Workshop Bot v0.0.1 &bull; Powered by Antigravity
+  <footer class="text-center text-xs text-gray-500 py-6 border-t border-white/5 bg-dark-950/30">
+    Revision Workshop Bot v0.0.5 &bull; Powered by Antigravity
   </footer>
 
   <script>
-    // App State
-    let workshopData = {};
-    let studentList = [];
+    // Global State
+    let parsedStudents = [];
+    let logsInterval = null;
 
-    // Navigation Steps
-    function goToStep1() {
-      document.getElementById('step-1-content').classList.remove('hidden');
-      document.getElementById('step-2-content').classList.add('hidden');
-      
-      const badge1 = document.getElementById('step1-badge');
-      const badge2 = document.getElementById('step2-badge');
-      badge1.className = 'w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm bg-brand-600 text-white';
-      badge2.className = 'w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm bg-dark-700 text-gray-400';
-    }
-
-    function goToStep2() {
-      // Validate Step 1 Inputs
-      const subject = document.getElementById('subject').value.trim();
-      const courseId = document.getElementById('courseId').value.trim();
-      const classTime = document.getElementById('classTime').value;
-      const teacherName = document.getElementById('teacherName').value.trim();
-      const teacherPhone = document.getElementById('teacherPhone').value.trim();
-
-      if (!subject || !courseId || !classTime || !teacherName || !teacherPhone) {
-        showToast('Required Fields Missing', 'Please fill in all mandatory fields before continuing.', 'error');
-        return;
+    // Tab Switching
+    function switchTab(tabName) {
+      // Clear any active audit logs interval
+      if (logsInterval) {
+        clearInterval(logsInterval);
+        logsInterval = null;
       }
 
-      workshopData = {
-        subject,
-        courseId: parseInt(courseId, 10),
-        meetingLink: document.getElementById('meetingLink').value.trim() || null,
-        classDayOfWeek: parseInt(document.getElementById('classDay').value, 10),
-        classTime,
-        teacherName,
-        teacherPhone: teacherPhone.includes('@') ? teacherPhone : `${teacherPhone}@s.whatsapp.net`
-      };
+      // Hide all tabs
+      ['classes', 'learndash', 'homework', 'reminders', 'reports', 'logs'].forEach(name => {
+        document.getElementById(`content-${name}`).classList.add('hidden');
+        document.getElementById(`tab-${name}`).className = "px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 transition-all duration-200 text-gray-400 hover:text-white hover:bg-white/5";
+      });
 
-      document.getElementById('step-1-content').classList.add('hidden');
-      document.getElementById('step-2-content').classList.remove('hidden');
+      // Show selected tab
+      document.getElementById(`content-${tabName}`).classList.remove('hidden');
+      document.getElementById(`tab-${tabName}`).className = "px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 transition-all duration-200 bg-brand-600 text-white shadow-lg shadow-brand-600/20";
 
-      const badge1 = document.getElementById('step1-badge');
-      const badge2 = document.getElementById('step2-badge');
-      badge1.className = 'w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm bg-brand-600/20 text-brand-400 border border-brand-500/35';
-      badge2.className = 'w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm bg-brand-600 text-white';
-    }
-
-    // CSV Roster Upload handler
-    function handleCSVFile(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const text = e.target.result;
-        parseCSVText(text);
-      };
-      reader.readAsText(file);
-    }
-
-    function parseCSVText(text) {
-      const lines = text.split(/\r?\n/);
-      if (lines.length === 0) return;
-
-      const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
-      
-      const nameIdx = headers.indexOf('name');
-      const phoneIdx = headers.indexOf('phoneNumber');
-      const idIdx = headers.indexOf('learndashId');
-
-      if (nameIdx === -1 || phoneIdx === -1 || idIdx === -1) {
-        showToast('Invalid CSV Headers', 'Your CSV must contain: name, phoneNumber, learndashId', 'error');
-        return;
-      }
-
-      const parsedStudents = [];
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-
-        // basic CSV parsing ignoring nested commas
-        const cols = line.split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
-        if (cols.length < headers.length) continue;
-
-        let phone = cols[phoneIdx];
-        // Normalize phone to JID format
-        if (!phone.includes('@')) {
-          phone = `${phone}@s.whatsapp.net`;
-        }
-
-        parsedStudents.push({
-          name: cols[nameIdx],
-          phoneNumber: phone,
-          learndashId: parseInt(cols[idIdx], 10)
-        });
-      }
-
-      studentList = parsedStudents;
-      updateStudentTable();
-      showToast('CSV Parsed Successfully', `Loaded ${studentList.length} students.`, 'success');
-    }
-
-    function updateStudentTable() {
-      const tbody = document.getElementById('student-table-body');
-      document.getElementById('student-count').textContent = studentList.length;
-
-      if (studentList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="3" class="px-4 py-6 text-center text-gray-500">No students loaded yet. Please upload a roster.</td></tr>`;
-        return;
-      }
-
-      tbody.innerHTML = studentList.map(s => `
-        <tr class="hover:bg-white/5 transition">
-          <td class="px-4 py-3 font-medium text-white">${s.name}</td>
-          <td class="px-4 py-3">${s.phoneNumber.split('@')[0]}</td>
-          <td class="px-4 py-3 font-mono">${s.learndashId}</td>
-        </tr>
-      `).join('');
-    }
-
-    function downloadCSVTemplate() {
-      const template = "name,phoneNumber,learndashId\nJohn Doe,60123456789,101\nJane Smith,60198765432,102\n";
-      const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.setAttribute("download", "student_roster_template.csv");
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-
-    // Submit Workshop setup
-    async function submitWorkshop() {
-      if (studentList.length === 0) {
-        showToast('Empty Roster', 'Please upload a CSV file with at least 1 student before registering.', 'error');
-        return;
-      }
-
-      try {
-        // 1. Create Workshop
-        const workshopResponse = await fetch('/api/workshop', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(workshopData)
-        });
-
-        if (!workshopResponse.ok) throw new Error('Workshop metadata creation failed.');
-        const workshopResult = await workshopResponse.json();
-        const workshopId = workshopResult.workshopId;
-
-        // 2. Import Students
-        const importResponse = await fetch(`/api/workshop/${workshopId}/students/import`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(studentList)
-        });
-
-        if (!importResponse.ok) throw new Error('Student import enrollment failed.');
-        const importResult = await importResponse.json();
-
-        showToast('Success!', 'Workshop registered & bot orchestration started.', 'success');
-        
-        // Reset form
-        setTimeout(() => {
-          window.location.reload();
-        }, 3000);
-
-      } catch (err) {
-        console.error(err);
-        showToast('Setup Failed', err.message || 'An error occurred during submission.', 'error');
+      // Trigger loads
+      if (tabName === 'classes') {
+        fetchWorkshops();
+      } else if (tabName === 'learndash') {
+        fetchLearnDashCourses();
+      } else if (tabName === 'homework') {
+        populateWorkshopDropdowns();
+        fetchHomeworks();
+      } else if (tabName === 'reminders') {
+        populateWorkshopDropdowns();
+      } else if (tabName === 'reports') {
+        populateWorkshopDropdowns();
+      } else if (tabName === 'logs') {
+        fetchAuditLogs(false);
+        logsInterval = setInterval(() => fetchAuditLogs(true), 3000);
       }
     }
 
@@ -442,7 +667,6 @@
       }
 
       toast.classList.remove('translate-y-24', 'opacity-0');
-      
       clearTimeout(toastTimeout);
       toastTimeout = setTimeout(hideToast, 4000);
     }
@@ -451,6 +675,639 @@
       const toast = document.getElementById('toast');
       toast.classList.add('translate-y-24', 'opacity-0');
     }
+
+    // CSV Roster Parsing
+    function parseCSV(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const text = e.target.result;
+        const lines = text.split(/\r?\n/);
+        if (lines.length <= 1) {
+          showToast('Empty CSV', 'The uploaded file has no data.', 'error');
+          return;
+        }
+
+        // Match headers
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, '').replace(/\s+/g, ''));
+        const nameIdx = headers.findIndex(h => ['name', 'fullname', 'studentname', 'student'].includes(h));
+        const phoneIdx = headers.findIndex(h => ['phone', 'phonenumber', 'telephone', 'mobile', 'jid'].includes(h));
+        const idIdx = headers.findIndex(h => ['learndashid', 'ldid', 'userid'].includes(h));
+        const levelIdx = headers.findIndex(h => ['level', 'form', 'grade'].includes(h));
+
+        if (nameIdx === -1 || phoneIdx === -1 || idIdx === -1) {
+          showToast('Invalid CSV Format', 'CSV must contain headers: name, phone, learndashId (level is optional)', 'error');
+          return;
+        }
+
+        parsedStudents = [];
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+
+          // Simple split taking quotes into account
+          const cols = [];
+          let current = '';
+          let inQuotes = false;
+          for (let j = 0; j < line.length; j++) {
+            const char = line[j];
+            if (char === '"') inQuotes = !inQuotes;
+            else if (char === ',' && !inQuotes) {
+              cols.push(current.trim());
+              current = '';
+            } else current += char;
+          }
+          cols.push(current.trim());
+
+          if (cols.length < Math.max(nameIdx, phoneIdx, idIdx) + 1) continue;
+
+          const originalName = cols[nameIdx].replace(/^["']|["']$/g, '');
+          let phone = cols[phoneIdx].replace(/\D/g, '');
+          const ldId = parseInt(cols[idIdx].replace(/\D/g, ''), 10);
+          const levelVal = levelIdx !== -1 && cols[levelIdx] ? cols[levelIdx].trim() : '';
+
+          if (!originalName || !phone || isNaN(ldId)) continue;
+
+          // Clean Malaysian phone numbers
+          if (phone.startsWith('0')) {
+            phone = '60' + phone.substring(1);
+          }
+          
+          let cleanJid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
+          if (phone.length > 13) {
+            cleanJid = `${phone}@lid`; // handle LID
+          }
+
+          // Apply nickname formatting logic: form[level]-[name]
+          let formattedName = originalName;
+          if (levelVal) {
+            const cleanedLevel = levelVal.toLowerCase().replace(/\s+/g, '');
+            let prefix = cleanedLevel;
+            if (/^\d+$/.test(cleanedLevel)) {
+              prefix = `form${cleanedLevel}`;
+            } else if (cleanedLevel.startsWith('f') && /^\d+$/.test(cleanedLevel.substring(1))) {
+              prefix = `form${cleanedLevel.substring(1)}`;
+            }
+            formattedName = `${prefix}-${originalName}`;
+          }
+
+          parsedStudents.push({
+            name: formattedName,
+            phoneNumber: cleanJid,
+            learndashId: ldId
+          });
+        }
+
+        document.getElementById('csv-label').innerHTML = `<i class="fa-solid fa-file-circle-check text-brand-400 mr-1.5"></i>${parsedStudents.length} Students Loaded`;
+        document.getElementById('preview-section').classList.remove('hidden');
+
+        const tbody = document.getElementById('roster-tbody');
+        tbody.innerHTML = parsedStudents.map(s => `
+          <tr class="hover:bg-white/5">
+            <td class="px-3 py-2 font-medium text-white">${s.name}</td>
+            <td class="px-3 py-2">${s.phoneNumber.split('@')[0]}</td>
+            <td class="px-3 py-2 font-mono">${s.learndashId}</td>
+          </tr>
+        `).join('');
+      };
+      reader.readAsText(file);
+    }
+
+    function downloadTemplate() {
+      const template = "Name,Phone number,Learndash account,level\nLynxx,012233678,248030116,5\nKwee,0122082435,248030117,4\n";
+      const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.setAttribute("download", "roster_template.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    // API: Create Class & Import Roster
+    async function createClass() {
+      const subject = document.getElementById('subject').value.trim();
+      const courseId = parseInt(document.getElementById('courseId').value.trim(), 10);
+      const meetingLink = document.getElementById('meetingLink').value.trim() || null;
+      const classDayOfWeek = parseInt(document.getElementById('classDay').value, 10);
+      const classTime = document.getElementById('classTime').value;
+      const teacherName = document.getElementById('teacherName').value.trim();
+      const teacherPhone = document.getElementById('teacherPhone').value.trim();
+
+      if (!subject || isNaN(courseId) || !classTime || !teacherName || !teacherPhone) {
+        showToast('Required Fields Missing', 'Please fill in all mandatory fields before submitting.', 'error');
+        return;
+      }
+
+      if (parsedStudents.length === 0) {
+        showToast('Roster Required', 'Please upload a CSV student roster file.', 'error');
+        return;
+      }
+
+      try {
+        // 1. Create class
+        const wsResponse = await fetch('/api/workshop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            subject,
+            courseId,
+            meetingLink,
+            classDayOfWeek,
+            classTime,
+            teacherName,
+            teacherPhone: teacherPhone.includes('@') ? teacherPhone : `${teacherPhone}@s.whatsapp.net`
+          })
+        });
+
+        if (!wsResponse.ok) throw new Error('Failed to create workshop class.');
+        const wsData = await wsResponse.json();
+
+        // 2. Import students
+        const importResponse = await fetch(`/api/workshop/${wsData.workshopId}/students/import`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(parsedStudents)
+        });
+
+        if (!importResponse.ok) throw new Error('Failed to import student roster.');
+
+        showToast('Class Setup Success!', `Successfully set up "${subject}" and enrolled ${parsedStudents.length} students.`, 'success');
+        
+        // Reset Inputs
+        document.getElementById('subject').value = '';
+        document.getElementById('courseId').value = '';
+        document.getElementById('meetingLink').value = '';
+        document.getElementById('teacherName').value = '';
+        document.getElementById('teacherPhone').value = '';
+        document.getElementById('csv-label').innerHTML = `<i class="fa-solid fa-upload mr-1.5"></i>Upload student roster CSV`;
+        document.getElementById('preview-section').classList.add('hidden');
+        parsedStudents = [];
+
+        fetchWorkshops();
+      } catch (err) {
+        console.error(err);
+        showToast('Setup Failed', err.message, 'error');
+      }
+    }
+
+    // API: Fetch Workshops list
+    let cachedWorkshops = [];
+    async function fetchWorkshops() {
+      const container = document.getElementById('class-list');
+      const loader = document.getElementById('class-list-loading');
+      
+      try {
+        const response = await fetch('/api/workshops');
+        if (!response.ok) throw new Error('Failed fetching workshops.');
+        cachedWorkshops = await response.json();
+
+        loader.classList.add('hidden');
+        if (cachedWorkshops.length === 0) {
+          container.innerHTML = `<div class="text-center py-10 text-xs text-gray-500">No classes registered yet. Use the setup form on the left to start.</div>`;
+          container.classList.remove('hidden');
+          return;
+        }
+
+        container.innerHTML = cachedWorkshops.map(w => `
+          <div class="bg-dark-800/80 p-4 rounded-xl border border-white/5 space-y-2.5 transition hover:border-brand-500/30">
+            <div class="flex justify-between items-start">
+              <div>
+                <h3 class="text-xs font-bold text-white">${w.subject}</h3>
+                <p class="text-[10px] text-gray-400 mt-0.5">Course ID: ${w.courseId} | Teacher: ${w.teacher.name}</p>
+              </div>
+              <span class="px-2 py-0.5 rounded-lg bg-brand-500/10 text-brand-400 font-bold text-[9px]">${w.students.length} Students</span>
+            </div>
+            <div class="text-[10px] text-gray-400 leading-tight">
+              <p><i class="fa-regular fa-clock mr-1 text-brand-400"></i>Weekly schedule: ${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][w.classDayOfWeek]} at ${w.classTime}</p>
+              ${w.meetingLink ? `<p class="mt-1 font-mono text-[9px] truncate"><i class="fa-solid fa-link mr-1 text-brand-400"></i>${w.meetingLink}</p>` : ''}
+            </div>
+          </div>
+        `).join('');
+        container.classList.remove('hidden');
+      } catch (err) {
+        console.error(err);
+        loader.classList.add('hidden');
+        container.innerHTML = `<div class="text-center py-10 text-xs text-rose-500">Failed to load classes list.</div>`;
+        container.classList.remove('hidden');
+      }
+    }
+
+    // Populate dropdowns for tabs
+    function populateWorkshopDropdowns() {
+      const dropdowns = ['hw-workshop', 'hw-filter-select', 'reminder-workshop-select', 'report-workshop-select'];
+      dropdowns.forEach(id => {
+        const select = document.getElementById(id);
+        if (!select) return;
+        const currentVal = select.value;
+
+        // Keep placeholder
+        select.innerHTML = select.options[0] ? select.options[0].outerHTML : '';
+        cachedWorkshops.forEach(w => {
+          const opt = document.createElement('option');
+          opt.value = w.id;
+          opt.textContent = w.subject;
+          select.appendChild(opt);
+        });
+
+        // Restore value
+        select.value = currentVal;
+      });
+    }
+
+    // API: Fetch LearnDash Courses
+    async function fetchLearnDashCourses() {
+      const select = document.getElementById('ld-courses-select');
+      const currentVal = select.value;
+      select.innerHTML = '<option value="">-- Loading Courses... --</option>';
+
+      try {
+        const response = await fetch('/api/learndash/courses');
+        if (!response.ok) throw new Error();
+        const courses = await response.json();
+
+        select.innerHTML = '<option value="">-- Choose Course --</option>';
+        courses.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = `${c.title.rendered} (ID: ${c.id})`;
+          select.appendChild(opt);
+        });
+        select.value = currentVal;
+      } catch (e) {
+        select.innerHTML = '<option value="">-- Failed to load courses --</option>';
+      }
+    }
+
+    // API: Fetch Lessons for Course
+    async function fetchLessonsForCourse(courseId) {
+      const outline = document.getElementById('lessons-outline');
+      const loader = document.getElementById('lessons-outline-loading');
+      const empty = document.getElementById('lessons-outline-empty');
+
+      if (!courseId) {
+        outline.classList.add('hidden');
+        loader.classList.add('hidden');
+        empty.classList.remove('hidden');
+        return;
+      }
+
+      outline.classList.add('hidden');
+      empty.classList.add('hidden');
+      loader.classList.remove('hidden');
+
+      try {
+        const response = await fetch(`/api/learndash/courses/${courseId}/lessons`);
+        if (!response.ok) throw new Error();
+        const lessons = await response.json();
+
+        loader.classList.add('hidden');
+        if (lessons.length === 0) {
+          outline.innerHTML = `<div class="text-center py-10 text-xs text-gray-500">No lessons outline mapped in this course.</div>`;
+          outline.classList.remove('hidden');
+          return;
+        }
+
+        outline.innerHTML = lessons.map(l => `
+          <div class="bg-dark-800 p-3.5 rounded-xl border border-white/5 flex justify-between items-center text-xs">
+            <span class="font-medium text-white">${l.title.rendered}</span>
+            <span class="px-2 py-0.5 rounded-lg bg-dark-700 text-gray-400 font-mono text-[9px] uppercase">ID: ${l.id}</span>
+          </div>
+        `).join('');
+        outline.classList.remove('hidden');
+      } catch (e) {
+        loader.classList.add('hidden');
+        outline.innerHTML = `<div class="text-center py-10 text-xs text-rose-500">Failed to fetch course lessons outline.</div>`;
+        outline.classList.remove('hidden');
+      }
+    }
+
+    // API: Trigger LearnDash Sync and update local cache
+    async function triggerLearnDashSync() {
+      const btn = document.getElementById('ld-sync-btn');
+      const icon = document.getElementById('ld-sync-icon');
+      const text = document.getElementById('ld-sync-text');
+
+      if (!btn || !icon || !text) return;
+
+      btn.disabled = true;
+      btn.classList.add('opacity-75', 'cursor-not-allowed');
+      icon.classList.add('fa-spin');
+      text.textContent = 'Syncing Cache (Please wait)...';
+
+      try {
+        const response = await fetch('/api/learndash/sync', { method: 'POST' });
+        const data = await response.json();
+
+        if (!response.ok) throw new Error(data.error || 'LearnDash sync failed');
+
+        showToast('Sync Successful!', `Loaded ${data.coursesCount} courses and lessons into local cache!`, 'success');
+        
+        // Reload course list dropdown
+        await fetchLearnDashCourses();
+      } catch (err) {
+        console.error(err);
+        showToast('Sync Failed', err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('opacity-75', 'cursor-not-allowed');
+        icon.classList.remove('fa-spin');
+        text.textContent = 'Force Sync LearnDash Cache';
+      }
+    }
+
+    // API: Homework Workshop Dropdown Change
+    async function onHomeworkWorkshopChange(workshopId) {
+      const lessonSelect = document.getElementById('hw-lessonId');
+      if (!workshopId) {
+        lessonSelect.innerHTML = '<option value="">-- Select Workshop First --</option>';
+        return;
+      }
+
+      const workshop = cachedWorkshops.find(w => w.id === workshopId);
+      if (!workshop || !workshop.courseId) {
+        lessonSelect.innerHTML = '<option value="">-- No Linked Course --</option>';
+        return;
+      }
+
+      lessonSelect.innerHTML = '<option value="">-- Loading Lessons... --</option>';
+
+      try {
+        const response = await fetch(`/api/learndash/courses/${workshop.courseId}/lessons`);
+        if (!response.ok) throw new Error('Failed to fetch lessons');
+        const lessons = await response.json();
+
+        lessonSelect.innerHTML = '<option value="">-- Choose Lesson --</option>';
+        if (lessons.length === 0) {
+          lessonSelect.innerHTML = '<option value="">-- No Lessons Found --</option>';
+        } else {
+          lessons.forEach(lesson => {
+            const opt = document.createElement('option');
+            opt.value = lesson.id;
+            opt.textContent = lesson.title?.rendered || `Lesson ${lesson.id}`;
+            lessonSelect.appendChild(opt);
+          });
+        }
+      } catch (err) {
+        console.error(err);
+        lessonSelect.innerHTML = '<option value="">-- Error Loading Lessons --</option>';
+      }
+    }
+
+    // API: Register Homework
+    async function registerHomework() {
+      const workshopId = document.getElementById('hw-workshop').value;
+      const lessonId = parseInt(document.getElementById('hw-lessonId').value, 10);
+      const dueDate = document.getElementById('hw-dueDate').value;
+
+      if (!workshopId || isNaN(lessonId) || !dueDate) {
+        showToast('Required Fields Missing', 'Please select a workshop, lesson, and due date.', 'error');
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/workshops/${workshopId}/homeworks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lessonId, dueDate })
+        });
+
+        if (!response.ok) throw new Error('Failed to register homework assignment.');
+        
+        showToast('Homework Registered!', 'The homework was successfully saved. Reminder cron evaluates this daily.', 'success');
+        
+        document.getElementById('hw-lessonId').value = '';
+        document.getElementById('hw-dueDate').value = '';
+        
+        fetchHomeworks();
+      } catch (err) {
+        console.error(err);
+        showToast('Failed to Save', err.message, 'error');
+      }
+    }
+
+    // API: Fetch Homeworks
+    let cachedHomeworks = [];
+    async function fetchHomeworks() {
+      const filter = document.getElementById('hw-filter-select').value;
+      const list = document.getElementById('homework-list');
+      const empty = document.getElementById('homework-list-empty');
+
+      try {
+        // Fetch workshops list first if not cached
+        if (cachedWorkshops.length === 0) {
+          const response = await fetch('/api/workshops');
+          cachedWorkshops = await response.json();
+        }
+
+        // Fetch all homeworks for workshops
+        list.classList.add('hidden');
+        empty.classList.add('hidden');
+        
+        let allHws = [];
+        for (const w of cachedWorkshops) {
+          if (filter && w.id !== filter) continue;
+          const hwRes = await fetch(`/api/workshops/${w.id}/homeworks`);
+          const hws = await hwRes.json();
+          allHws = allHws.concat(hws.map(h => ({ ...h, subject: w.subject })));
+        }
+
+        if (allHws.length === 0) {
+          empty.classList.remove('hidden');
+          return;
+        }
+
+        list.innerHTML = allHws.map(h => {
+          const due = new Date(h.dueDate);
+          const isOverdue = due < new Date();
+          return `
+            <div class="bg-dark-800 p-4 rounded-xl border border-white/5 flex flex-col sm:flex-row justify-between sm:items-center space-y-2 sm:space-y-0 text-xs">
+              <div>
+                <h3 class="font-bold text-white">${h.title}</h3>
+                <p class="text-[10px] text-gray-400 mt-0.5">Workshop: ${h.subject} | Lesson ID: ${h.lessonId}</p>
+              </div>
+              <div class="flex items-center space-x-3">
+                <span class="px-2 py-0.5 rounded-lg text-[9px] font-bold ${isOverdue ? 'bg-rose-500/10 text-rose-400' : 'bg-brand-500/10 text-brand-400'}">
+                  Due: ${due.toLocaleDateString()} ${isOverdue ? '(Overdue)' : ''}
+                </span>
+                <span class="font-mono text-[9px] bg-dark-700 px-2 py-0.5 rounded text-gray-500 uppercase">JID: ${h.id.substring(0, 8)}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+        list.classList.remove('hidden');
+      } catch (e) {
+        console.error(e);
+        empty.classList.remove('hidden');
+      }
+    }
+
+    function filterHomeworkList(val) {
+      fetchHomeworks();
+    }
+
+    // API: Fetch Students for Reminder Matrix
+    async function fetchStudentsForReminder(workshopId) {
+      const tbody = document.getElementById('reminder-tbody');
+      const matrix = document.getElementById('reminder-matrix');
+      const empty = document.getElementById('reminder-matrix-empty');
+      const loader = document.getElementById('reminder-matrix-loading');
+
+      if (!workshopId) {
+        matrix.classList.add('hidden');
+        loader.classList.add('hidden');
+        empty.classList.remove('hidden');
+        return;
+      }
+
+      matrix.classList.add('hidden');
+      empty.classList.add('hidden');
+      loader.classList.remove('hidden');
+
+      try {
+        const response = await fetch(`/api/workshops/${workshopId}/students`);
+        if (!response.ok) throw new Error();
+        const students = await response.json();
+
+        loader.classList.add('hidden');
+        if (students.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="4" class="px-4 py-6 text-center text-gray-500">No students enrolled in this class workshop.</td></tr>`;
+          matrix.classList.remove('hidden');
+          return;
+        }
+
+        tbody.innerHTML = students.map(s => `
+          <tr class="hover:bg-white/5 text-xs">
+            <td class="px-4 py-3 font-semibold text-white">${s.name}</td>
+            <td class="px-4 py-3 font-mono">${s.phoneNumber.split('@')[0]}</td>
+            <td class="px-4 py-3 font-mono text-gray-400">${s.learndashId}</td>
+            <td class="px-4 py-3">
+              <span class="px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-400 text-[9px] font-bold">🟢 ENROLLED</span>
+            </td>
+          </tr>
+        `).join('');
+        matrix.classList.remove('hidden');
+      } catch (e) {
+        loader.classList.add('hidden');
+        tbody.innerHTML = `<tr><td colspan="4" class="px-4 py-6 text-center text-rose-500">Failed to fetch class roster list.</td></tr>`;
+        matrix.classList.remove('hidden');
+      }
+    }
+
+    // API: Trigger Reminders
+    async function triggerReminders() {
+      const select = document.getElementById('reminder-workshop-select');
+      const workshopId = select.value;
+
+      if (!workshopId) {
+        showToast('Select Class First', 'Please select a workshop class to evaluate progress reminders.', 'error');
+        return;
+      }
+
+      showToast('Triggering Cycle', 'Evaluating progress logs. Processing dispatches...', 'success');
+
+      try {
+        const response = await fetch(`/api/workshops/${workshopId}/reminders/trigger`, {
+          method: 'POST'
+        });
+        if (!response.ok) throw new Error('Reminder trigger request failed.');
+        const result = await response.json();
+        
+        showToast('Cycle Complete', result.message, 'success');
+        fetchAuditLogs();
+      } catch (err) {
+        console.error(err);
+        showToast('Evaluation Failed', err.message, 'error');
+      }
+    }
+
+    // API: Generate Report
+    async function generateReport() {
+      const select = document.getElementById('report-workshop-select');
+      const workshopId = select.value;
+      const output = document.getElementById('report-output');
+      const empty = document.getElementById('report-output-empty');
+      const loader = document.getElementById('report-output-loading');
+
+      if (!workshopId) {
+        showToast('Select Class First', 'Please select a workshop to compile progress report.', 'error');
+        return;
+      }
+
+      output.classList.add('hidden');
+      empty.classList.add('hidden');
+      loader.classList.remove('hidden');
+
+      try {
+        const response = await fetch(`/api/workshops/${workshopId}/report`);
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+
+        loader.classList.add('hidden');
+        document.getElementById('report-text').textContent = data.report;
+        output.classList.remove('hidden');
+      } catch (e) {
+        loader.classList.add('hidden');
+        empty.classList.remove('hidden');
+        showToast('Failed to Compile', 'Could not generate report for this workshop.', 'error');
+      }
+    }
+
+    // API: Fetch Audit Logs
+    async function fetchAuditLogs(isPolling = false) {
+      const tbody = document.getElementById('logs-tbody');
+      const container = document.getElementById('audit-logs');
+      const loader = document.getElementById('audit-logs-loading');
+
+      if (!isPolling) {
+        container.classList.add('hidden');
+        loader.classList.remove('hidden');
+      }
+
+      try {
+        const response = await fetch('/api/audit-logs');
+        if (!response.ok) throw new Error();
+        const logs = await response.json();
+
+        if (!isPolling) {
+          loader.classList.add('hidden');
+        }
+
+        if (logs.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-gray-500">No audit logs recorded in system.</td></tr>`;
+          if (!isPolling) container.classList.remove('hidden');
+          return;
+        }
+
+        tbody.innerHTML = logs.map(l => {
+          let lvlClass = 'text-gray-400';
+          if (l.level === 'WARN') lvlClass = 'text-amber-400 font-bold';
+          if (l.level === 'ERROR') lvlClass = 'text-rose-400 font-bold';
+
+          return `
+            <tr class="hover:bg-white/5 text-[10px]">
+              <td class="px-4 py-2.5 font-sans text-gray-400">${new Date(l.timestamp).toLocaleString()}</td>
+              <td class="px-4 py-2.5 ${lvlClass}">${l.level}</td>
+              <td class="px-4 py-2.5 text-white font-semibold">${l.action}</td>
+              <td class="px-4 py-2.5 max-w-sm truncate text-gray-300" title="${l.details}">${l.details}</td>
+              <td class="px-4 py-2.5 text-gray-500">${l.operator || 'SYSTEM'}</td>
+            </tr>
+          `;
+        }).join('');
+        if (!isPolling) container.classList.remove('hidden');
+      } catch (e) {
+        loader.classList.add('hidden');
+        tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-rose-500">Failed to load audit logs from database.</td></tr>`;
+        container.classList.remove('hidden');
+      }
+    }
+
+    // Initialize Page
+    document.addEventListener('DOMContentLoaded', () => {
+      fetchWorkshops();
+    });
   </script>
 </body>
 </html>

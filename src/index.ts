@@ -255,6 +255,267 @@ server.post('/api/webhook/submission', async (request, reply) => {
   }
 });
 
+/**
+ * GET /api/workshops
+ * Lists all workshops with teacher details and student counts
+ */
+server.get('/api/workshops', async (request, reply) => {
+  try {
+    const workshops = await prisma.workshop.findMany({
+      include: {
+        teacher: true,
+        students: {
+          include: { student: true }
+        }
+      }
+    });
+    return workshops;
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.status(500).send({ error: 'Failed to retrieve workshops.' });
+  }
+});
+
+/**
+ * GET /api/workshops/:id/students
+ * Lists all students enrolled in a specific workshop
+ */
+server.get('/api/workshops/:id/students', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  try {
+    const enrollments = await prisma.studentWorkshop.findMany({
+      where: { workshopId: id },
+      include: { student: true }
+    });
+    return enrollments.map(e => e.student);
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.status(500).send({ error: 'Failed to retrieve students.' });
+  }
+});
+
+/**
+ * GET /api/workshops/:id/homeworks
+ * Lists all homework tasks for a specific workshop
+ */
+server.get('/api/workshops/:id/homeworks', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  try {
+    const homeworks = await prisma.homework.findMany({
+      where: { workshopId: id },
+      orderBy: { dueDate: 'asc' }
+    });
+    return homeworks;
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.status(500).send({ error: 'Failed to retrieve homeworks.' });
+  }
+});
+
+/**
+ * POST /api/workshops/:id/homeworks
+ * Registers a new homework task for the workshop
+ */
+server.post('/api/workshops/:id/homeworks', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const { lessonId, dueDate } = request.body as { lessonId: number; dueDate: string };
+
+  if (!lessonId || !dueDate) {
+    return reply.status(400).send({ error: 'lessonId and dueDate are required.' });
+  }
+
+  try {
+    const title = `Lesson ${lessonId} Homework`;
+    const homework = await prisma.homework.create({
+      data: {
+        workshopId: id,
+        lessonId,
+        title,
+        dueDate: new Date(dueDate)
+      }
+    });
+
+    // Create initial ProgressLogs for all enrolled students
+    const enrollments = await prisma.studentWorkshop.findMany({
+      where: { workshopId: id }
+    });
+
+    for (const enrollment of enrollments) {
+      await prisma.progressLog.upsert({
+        where: {
+          studentId_homeworkId: {
+            studentId: enrollment.studentId,
+            homeworkId: homework.id
+          }
+        },
+        create: {
+          studentId: enrollment.studentId,
+          homeworkId: homework.id,
+          status: 'NOT_STARTED'
+        },
+        update: {}
+      });
+    }
+
+    await logAudit('INFO', 'CREATE_HOMEWORK_API', `Created homework for Lesson ID ${lessonId} via WebUI.`, 'WebUI');
+    return homework;
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.status(500).send({ error: 'Failed to register homework.' });
+  }
+});
+
+
+/**
+ * Helper to fetch all pages from WordPress REST API (handles pagination)
+ */
+async function fetchAllFromWordPress(baseUrl: string, token: string): Promise<any[]> {
+  let allItems: any[] = [];
+  let page = 1;
+  let hasNext = true;
+
+  while (hasNext) {
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    const url = `${baseUrl}${separator}per_page=100&page=${page}`;
+
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      if (page === 1) {
+        throw new Error(`LearnDash returned status ${response.status}`);
+      }
+      break;
+    }
+
+    const items = await response.json();
+    if (!Array.isArray(items) || items.length === 0) {
+      hasNext = false;
+    } else {
+      allItems = allItems.concat(items);
+      if (items.length < 100) {
+        hasNext = false;
+      } else {
+        page++;
+      }
+    }
+  }
+  return allItems;
+}
+
+/**
+ * GET /api/learndash/courses
+ * Reads courses directly from the local JSON cache
+ */
+server.get('/api/learndash/courses', async (request, reply) => {
+  try {
+    const cachedCourses = learndash.getCachedData();
+    return cachedCourses.map(c => ({
+      id: c.courseId,
+      title: { rendered: c.courseName },
+      slug: c.courseName.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    }));
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.status(500).send({ error: 'Failed to retrieve courses from cache.' });
+  }
+});
+
+/**
+ * GET /api/learndash/courses/:courseId/lessons
+ * Reads course lessons directly from the local JSON cache
+ */
+server.get('/api/learndash/courses/:courseId/lessons', async (request, reply) => {
+  const { courseId } = request.params as { courseId: string };
+  try {
+    const cId = parseInt(courseId, 10);
+    const cachedCourses = learndash.getCachedData();
+    const course = cachedCourses.find(c => c.courseId === cId);
+    
+    if (!course) {
+      return [];
+    }
+
+    return course.lessons.map(l => ({
+      id: l.lessonId,
+      title: { rendered: l.lessonName }
+    }));
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.status(500).send({ error: `Failed to retrieve lessons for course ${courseId} from cache.` });
+  }
+});
+
+/**
+ * POST /api/learndash/sync
+ * Force sync courses and lessons from LearnDash to local JSON cache
+ */
+server.post('/api/learndash/sync', async (request, reply) => {
+  try {
+    const data = await learndash.syncAllWithLearnDash();
+    return {
+      success: true,
+      message: 'LearnDash cache successfully updated.',
+      coursesCount: data.length
+    };
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.status(500).send({ error: `Force sync failed: ${err.message}` });
+  }
+});
+
+
+/**
+ * POST /api/workshops/:id/reminders/trigger
+ * Manually triggers progress check and reminder cycle for a workshop
+ */
+server.post('/api/workshops/:id/reminders/trigger', async (request, reply) => {
+  try {
+    await orchestrator.runReminderCron();
+    await logAudit('INFO', 'TRIGGER_REMINDERS_API', 'Manually triggered progress validation and reminder cycle via WebUI.', 'WebUI');
+    return { success: true, message: 'Progress check and reminder validation cycle finished.' };
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.status(500).send({ error: `Reminder cycle failed: ${err.message}` });
+  }
+});
+
+/**
+ * GET /api/workshops/:id/report
+ * Compiles progress report for a workshop
+ */
+server.get('/api/workshops/:id/report', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  try {
+    const reportText = await orchestrator.compileProgressReport(id);
+    return { report: reportText };
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.status(500).send({ error: 'Failed to compile progress report.' });
+  }
+});
+
+/**
+ * GET /api/audit-logs
+ * Retrieves the 50 most recent audit logs
+ */
+server.get('/api/audit-logs', async (request, reply) => {
+  try {
+    const logs = await prisma.auditLog.findMany({
+      orderBy: { timestamp: 'desc' },
+      take: 50
+    });
+    return logs;
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.status(500).send({ error: 'Failed to retrieve audit logs.' });
+  }
+});
+
 // Start services and listen
 async function main() {
   // Connect to WhatsApp
@@ -262,12 +523,35 @@ async function main() {
   // Start orchestrator listeners
   await orchestrator.start();
 
+  // Run initial LearnDash cache sync in background if file does not exist
+  if (!learndash.isCacheAvailable()) {
+    console.log('LearnDash local cache not found. Triggering initial synchronization in background...');
+    setImmediate(async () => {
+      try {
+        await learndash.syncAllWithLearnDash();
+        console.log('Initial LearnDash cache sync finished successfully.');
+      } catch (err: any) {
+        console.error(`Initial LearnDash cache sync failed: ${err.message}`);
+      }
+    });
+  }
+
   // Schedule cron job to run the reminder engine every hour on the hour
   cron.schedule('0 * * * *', async () => {
     try {
       await orchestrator.runReminderCron();
     } catch (err: any) {
       console.error(`Cron reminder run failed: ${err.message}`);
+    }
+  });
+
+  // Schedule cron job to sync LearnDash cache every 14 days (2 weeks)
+  cron.schedule('0 0 */14 * *', async () => {
+    try {
+      console.log('Running periodic biweekly LearnDash cache synchronization...');
+      await learndash.syncAllWithLearnDash();
+    } catch (err: any) {
+      console.error(`Periodic LearnDash cache sync failed: ${err.message}`);
     }
   });
 
