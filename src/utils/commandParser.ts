@@ -35,7 +35,7 @@ export function parseCommand(
   const commandName = parts[0].toLowerCase();
   const args = parts.slice(1);
 
-  const recognizedCommands = ['homework', 'meeting', 'link', 'report', 'students', 'check', 'groups'];
+  const recognizedCommands = ['homework', 'meeting', 'link', 'report', 'students', 'check', 'groups', 'invite', 'add', 'profile', 'help'];
   if (!recognizedCommands.includes(commandName)) {
     return null;
   }
@@ -49,7 +49,7 @@ export function parseCommand(
   }
 
   // Determine authorized commands per role
-  const studentAllowedCommands = ['meeting', 'link', 'homework'];
+  const studentAllowedCommands = ['meeting', 'link', 'homework', 'help'];
 
   let isAuthorized = false;
   if (role === 'teacher') {

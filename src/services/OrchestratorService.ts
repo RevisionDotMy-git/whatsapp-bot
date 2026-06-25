@@ -57,6 +57,8 @@ function parseDueDate(text: string | null | undefined): ParsedDueDate | null {
 }
 
 export class OrchestratorService {
+  private canceledOnboardings = new Set<string>();
+
   constructor(
     private db: PrismaClient,
     private whatsapp: IWhatsAppClient,
@@ -154,6 +156,93 @@ export class OrchestratorService {
       `Received message from ${msg.senderJid} (Group: ${msg.isGroup}, Chat JID: ${msg.chatJid}). Content: ${contentDesc}`,
       msg.senderJid
     );
+
+    // Intercept student profile completion replies in DM
+    if (!msg.isGroup && msg.text) {
+      const searchSenderJids = [msg.senderJid];
+      if (msg.senderPn) {
+        searchSenderJids.push(msg.senderPn);
+      }
+
+      // Check if student has a pending onboarding JID
+      const pendingStudent = await this.db.student.findFirst({
+        where: {
+          phoneNumber: { in: searchSenderJids },
+          learndashId: { lt: 0 } // Negative indicates pending
+        }
+      });
+
+      if (pendingStudent && !this.canceledOnboardings.has(pendingStudent.phoneNumber)) {
+        const textClean = msg.text.trim().toLowerCase();
+        const isCommand = msg.text.trim().startsWith('/') || msg.text.trim().toLowerCase().startsWith('@bot ');
+
+        if (!isCommand) {
+          if (textClean === 'n/a' || textClean === 'cancel') {
+            this.canceledOnboardings.add(pendingStudent.phoneNumber);
+            await this.whatsapp.sendMessage(msg.chatJid, '❌ Profile linking canceled. You can complete it later or ask your teacher to link it.');
+            return;
+          }
+
+          // Try to parse digit ID
+          const digitsMatch = msg.text.match(/\b\d+\b/);
+          if (digitsMatch) {
+            const userId = parseInt(digitsMatch[0], 10);
+            
+            // Check if already in use
+            const existing = await this.db.student.findUnique({
+              where: { learndashId: userId }
+            });
+
+            if (existing && existing.id !== pendingStudent.id) {
+              await this.whatsapp.sendMessage(
+                msg.chatJid,
+                `❌ Error: LearnDash ID ${userId} is already linked to student *${existing.name}*. Please double-check your ID or contact your teacher.`
+              );
+              return;
+            }
+
+            await this.whatsapp.sendMessage(msg.chatJid, '⏳ Verifying your User ID against WordPress LearnDash...');
+            
+            const verifyRes = await this.learndash.verifyUserId(userId);
+            if (verifyRes.exists) {
+              await this.db.student.update({
+                where: { id: pendingStudent.id },
+                data: { learndashId: userId }
+              });
+              await logAudit('INFO', 'STUDENT_ONBOARDING_LINK_SUCCESS', `Student ${pendingStudent.phoneNumber} linked LearnDash ID: ${userId}`, msg.senderJid);
+              await this.whatsapp.sendMessage(msg.chatJid, `✅ Thank you! Your profile is complete. LearnDash ID linked: *${userId}*.`);
+            } else {
+              if (verifyRes.error) {
+                await this.whatsapp.sendMessage(msg.chatJid, `⚠️ Verification connection error. We could not verify your ID with the LearnDash server right now. Please try again in a few minutes.`);
+              } else {
+                await this.whatsapp.sendMessage(
+                  msg.chatJid,
+                  `❌ Error: We could not find any active account with ID: *${userId}*. Please check your ID and reply again, or reply *N/A* to cancel.\n\n` +
+                  `ℹ️ *How to find your LearnDash User ID*:\n` +
+                  `1. Log in to your account at *course.revision.my*\n` +
+                  `2. Tap on "Profile" (under the menu or avatar).\n` +
+                  `3. Your User ID is displayed under your profile avatar/name, or visible in your browser profile URL.`
+                );
+              }
+            }
+            return;
+          } else {
+            // Send guide since no digits matched and not cancel
+            await this.whatsapp.sendMessage(
+              msg.chatJid,
+              `👋 Need help linking your account?\n\n` +
+              `Please reply directly to this message with your *WordPress/LearnDash User ID* (numbers only).\n\n` +
+              `ℹ️ *How to find your LearnDash User ID*:\n` +
+              `1. Log in to your account at *course.revision.my*\n` +
+              `2. Tap on "Profile" (under the menu or avatar).\n` +
+              `3. Your User ID is displayed under your profile avatar/name, or visible in your browser profile URL.\n\n` +
+              `👉 Reply with your numeric ID (e.g. *12345*), or reply *N/A* to cancel.`
+            );
+            return;
+          }
+        }
+      }
+    }
 
     // Intercept CSV upload from Teacher
     if (msg.document) {
@@ -530,6 +619,22 @@ export class OrchestratorService {
 
     // 4. Command Dispatcher
     switch (parsed.command) {
+      case 'help':
+        await this.handleHelp(parsed.role, msg.chatJid);
+        break;
+
+      case 'invite':
+        await this.handleTeacherInvite(msg, msg.chatJid);
+        break;
+
+      case 'add':
+        await this.handleTeacherAddStudent(msg, msg.chatJid);
+        break;
+
+      case 'profile':
+        await this.handleTeacherProfileUpdate(msg, msg.chatJid);
+        break;
+
       case 'homework':
         if (parsed.role === 'teacher') {
           await this.handleTeacherHomework(workshop.id, parsed.lessonId, parsed.dueDate!, msg.chatJid);
@@ -1043,5 +1148,317 @@ export class OrchestratorService {
       `- Not Started: ${notStarted} 🔴\n\n` +
       `📋 *Detailed Student Progress Status:*\n\n${detailsList}`
     );
+  }
+
+  /**
+   * Displays role-based command guide
+   */
+  private async handleHelp(role: string, replyJid: string): Promise<void> {
+    if (role === 'teacher') {
+      const teacherHelp = 
+        `📋 *Revision Workshop Bot - Teacher Command Guide* 📋\n\n` +
+        `*Group Management & Onboarding*:\n` +
+        `- \`/groups\` : List all WhatsApp groups the bot is participating in.\n` +
+        `- \`/invite student <phone> <name>\` : Onboard a new student (sends DM profile linking request).\n` +
+        `- \`/invite teacher <phone> <name>\` : Onboard a new teacher.\n` +
+        `- \`/add <phone> <subject>\` : Enroll a student in a workshop class (falls back to group invite link DMs if blocked by privacy).\n\n` +
+        `*Class & Homework Management*:\n` +
+        `- \`/homework <lesson_id>\` : Assign a LearnDash lesson as homework for the class.\n` +
+        `- \`/profile <phone> name <new_name>\` : Correct a student's name in the database.\n` +
+        `- \`/profile <phone> id <learndash_id>\` : Link/update a student's LearnDash User ID.\n` +
+        `- \`/check <student_name>\` : Inspect a student's progress history.\n` +
+        `- \`/report\` : Fetch the class completion report.\n` +
+        `- \`/students\` : List students registered in this class.\n` +
+        `- \`/link\` or \`/meeting\` : View the virtual meeting URL.`;
+      await this.whatsapp.sendMessage(replyJid, teacherHelp);
+    } else {
+      const studentHelp = 
+        `📖 *Revision Workshop Bot - Student Command Guide* 📖\n\n` +
+        `- \`/homework\` : List your pending homework assignments and due dates.\n` +
+        `- \`/link\` or \`/meeting\` : Get your class virtual meeting link.`;
+      await this.whatsapp.sendMessage(replyJid, studentHelp);
+    }
+  }
+
+  private parsePhoneJid(rawPhone: string): string {
+    let clean = rawPhone.replace('@s.whatsapp.net', '').replace('@lid', '').replace(/\D/g, '');
+    if (clean.startsWith('0')) {
+      clean = '60' + clean.substring(1);
+    }
+    if (clean.length > 13) {
+      return `${clean}@lid`;
+    }
+    return `${clean}@s.whatsapp.net`;
+  }
+
+  /**
+   * Registers student or teacher and dispatches onboarding DM
+   */
+  private async handleTeacherInvite(msg: IncomingMessage, replyJid: string): Promise<void> {
+    const textParts = msg.text.trim().split(/\s+/);
+    const inviteType = (textParts[1] || '').toLowerCase();
+    const rawPhone = textParts[2] || '';
+    const name = textParts.slice(3).join(' ').trim();
+
+    if (!inviteType || !rawPhone || !name) {
+      await this.whatsapp.sendMessage(replyJid, '❌ Invalid format. Use: `/invite student|teacher <phone> <name>`');
+      return;
+    }
+
+    if (inviteType !== 'student' && inviteType !== 'teacher') {
+      await this.whatsapp.sendMessage(replyJid, '❌ Invalid type. Specify either `student` or `teacher`.');
+      return;
+    }
+
+    const targetJid = this.parsePhoneJid(rawPhone);
+
+    try {
+      if (inviteType === 'teacher') {
+        await this.db.teacher.upsert({
+          where: { phoneNumber: targetJid },
+          create: { name, phoneNumber: targetJid },
+          update: { name }
+        });
+
+        await logAudit('INFO', 'TEACHER_INVITED', `Teacher ${name} invited: ${targetJid}`, msg.senderJid);
+        await this.whatsapp.sendMessage(replyJid, `✅ Teacher *${name}* successfully registered in the database.`);
+        
+        // Send welcome message to the invited teacher
+        await this.whatsapp.sendMessage(
+          targetJid,
+          `👋 Hello Teacher *${name}*!\n` +
+          `You have been registered as an authorized teacher in the Revision Workshop Class Assistant Bot.\n` +
+          `Type \`/help\` to see the list of available commands.`
+        );
+      } else {
+        // Check if student already exists by JID
+        let student = await this.db.student.findUnique({
+          where: { phoneNumber: targetJid }
+        });
+
+        const placeholderId = -Math.floor(Date.now() / 1000) - Math.floor(Math.random() * 10000);
+
+        if (!student) {
+          student = await this.db.student.create({
+            data: {
+              name,
+              phoneNumber: targetJid,
+              learndashId: placeholderId
+            }
+          });
+        } else {
+          // If student exists but has a placeholder ID, regenerate it or keep it negative
+          if (student.learndashId >= 0) {
+            await this.whatsapp.sendMessage(replyJid, `⚠️ Student *${name}* is already registered and linked (ID: ${student.learndashId}).`);
+            return;
+          }
+        }
+
+        await logAudit('INFO', 'STUDENT_INVITED', `Student ${name} invited: ${targetJid}`, msg.senderJid);
+        await this.whatsapp.sendMessage(replyJid, `✅ Student *${name}* invited. Onboarding DM sent.`);
+
+        // Send onboarding message to student with user ID guide
+        const welcomeMessage = 
+          `👋 Hello *${name}*!\n` +
+          `You have been invited to Revision Workshops class tracking.\n\n` +
+          `Please reply directly to this message with your *WordPress/LearnDash User ID* (numbers only) to link your account.\n\n` +
+          `👉 Reply with: your ID number (e.g. *12345*)\n` +
+          `❌ Reply with: *N/A* to cancel this update.\n\n` +
+          `ℹ️ *How to find your LearnDash User ID*:\n` +
+          `1. Log in to your account at *course.revision.my*\n` +
+          `2. Tap on "Profile" (under the menu or avatar).\n` +
+          `3. Your User ID is displayed under your profile avatar/name, or visible in your browser profile URL.`;
+        
+        await this.whatsapp.sendMessage(targetJid, welcomeMessage);
+      }
+    } catch (err: any) {
+      await logAudit('ERROR', 'INVITE_COMMAND_FAILED', `Failed to invite: ${err.message}`, msg.senderJid);
+      await this.whatsapp.sendMessage(replyJid, `❌ Failed to execute invite command: ${err.message}`);
+    }
+  }
+
+  /**
+   * Enrolls a student in a workshop class via chat command
+   */
+  private async handleTeacherAddStudent(msg: IncomingMessage, replyJid: string): Promise<void> {
+    const textParts = msg.text.trim().split(/\s+/);
+    const rawPhone = textParts[1] || '';
+    const subject = textParts.slice(2).join(' ').trim();
+
+    if (!rawPhone || !subject) {
+      await this.whatsapp.sendMessage(replyJid, '❌ Invalid format. Use: `/add <phone> <class_subject>`');
+      return;
+    }
+
+    const targetJid = this.parsePhoneJid(rawPhone);
+
+    // Find student in DB. If not, auto-create student with a negative unique placeholder
+    let student = await this.db.student.findUnique({
+      where: { phoneNumber: targetJid }
+    });
+
+    if (!student) {
+      const placeholderId = -Math.floor(Date.now() / 1000) - Math.floor(Math.random() * 10000);
+      student = await this.db.student.create({
+        data: {
+          name: `Student-${rawPhone.replace(/\D/g, '')}`,
+          phoneNumber: targetJid,
+          learndashId: placeholderId
+        }
+      });
+    }
+
+    // Resolve workshop by subject matching (contains / case-insensitive)
+    const workshopMatch = await this.db.workshop.findFirst({
+      where: {
+        subject: {
+          contains: subject,
+          mode: 'insensitive'
+        }
+      }
+    });
+
+    if (!workshopMatch) {
+      await this.whatsapp.sendMessage(replyJid, `❌ Workshop class matching "${subject}" not found in database.`);
+      return;
+    }
+
+    try {
+      // Enroll in DB
+      await this.db.studentWorkshop.upsert({
+        where: {
+          studentId_workshopId: {
+            studentId: student.id,
+            workshopId: workshopMatch.id
+          }
+        },
+        create: {
+          studentId: student.id,
+          workshopId: workshopMatch.id
+        },
+        update: {}
+      });
+
+      await logAudit('INFO', 'STUDENT_ENROLLED_VIA_CHAT', `Student ${student.phoneNumber} enrolled in "${workshopMatch.subject}"`, msg.senderJid);
+      
+      let addStatus = 'added';
+      if (workshopMatch.whatsappJid) {
+        try {
+          await this.whatsapp.addParticipants(workshopMatch.whatsappJid, [targetJid]);
+          await this.whatsapp.sendMessage(
+            workshopMatch.whatsappJid,
+            `👋 Welcome *${student.name}* to our *${workshopMatch.subject}* WhatsApp group class!`
+          );
+        } catch (addErr: any) {
+          // Direct add failed (privacy settings). Fall back to invite link.
+          try {
+            const code = await this.whatsapp.getGroupInviteCode(workshopMatch.whatsappJid);
+            const inviteUrl = `https://chat.whatsapp.com/${code}`;
+            
+            await this.whatsapp.sendMessage(
+              targetJid,
+              `👋 Hello *${student.name}*!\n` +
+              `You have been enrolled in *${workshopMatch.subject}* class.\n` +
+              `Please tap this link to join the class WhatsApp group:\n` +
+              `🔗 ${inviteUrl}`
+            );
+            addStatus = 'invite link sent';
+          } catch (inviteErr: any) {
+            addStatus = `invite failed (${inviteErr.message})`;
+          }
+        }
+      }
+
+      if (addStatus === 'added') {
+        await this.whatsapp.sendMessage(replyJid, `✅ Success: Enrolled *${student.name}* in *${workshopMatch.subject}* and added to WhatsApp group.`);
+      } else if (addStatus === 'invite link sent') {
+        await this.whatsapp.sendMessage(replyJid, `⚠️ Enrolled *${student.name}* in *${workshopMatch.subject}*. Direct add blocked by privacy; group invite link DM-ed to student instead.`);
+      } else {
+        await this.whatsapp.sendMessage(replyJid, `⚠️ Enrolled *${student.name}* in *${workshopMatch.subject}*, but failed group sync: ${addStatus}`);
+      }
+
+    } catch (err: any) {
+      await this.whatsapp.sendMessage(replyJid, `❌ Failed to enroll student: ${err.message}`);
+    }
+  }
+
+  /**
+   * Corrects student name or LearnDash ID in the database
+   */
+  private async handleTeacherProfileUpdate(msg: IncomingMessage, replyJid: string): Promise<void> {
+    const textParts = msg.text.trim().split(/\s+/);
+    const rawPhone = textParts[1] || '';
+    const field = (textParts[2] || '').toLowerCase();
+    const value = textParts.slice(3).join(' ').trim();
+
+    if (!rawPhone || !field || !value) {
+      await this.whatsapp.sendMessage(replyJid, '❌ Invalid format. Use: `/profile <phone> name|id <new_value>`');
+      return;
+    }
+
+    if (field !== 'name' && field !== 'id') {
+      await this.whatsapp.sendMessage(replyJid, '❌ Invalid field. Only `name` or `id` can be updated.');
+      return;
+    }
+
+    const targetJid = this.parsePhoneJid(rawPhone);
+
+    // Find student in DB
+    let student = await this.db.student.findUnique({
+      where: { phoneNumber: targetJid }
+    });
+
+    if (!student) {
+      await this.whatsapp.sendMessage(replyJid, `❌ Student with phone/JID "${rawPhone}" not found in database.`);
+      return;
+    }
+
+    try {
+      if (field === 'name') {
+        await this.db.student.update({
+          where: { id: student.id },
+          data: { name: value }
+        });
+        await logAudit('INFO', 'TEACHER_UPDATE_STUDENT_NAME', `Teacher updated student ${student.phoneNumber} name to "${value}"`, msg.senderJid);
+        await this.whatsapp.sendMessage(replyJid, `✅ Successfully updated student name to *${value}*.`);
+      } else {
+        // field === 'id'
+        const userId = parseInt(value, 10);
+        if (isNaN(userId) || userId <= 0) {
+          await this.whatsapp.sendMessage(replyJid, '❌ LearnDash ID must be a positive integer.');
+          return;
+        }
+
+        // Check if already in use
+        const existing = await this.db.student.findUnique({
+          where: { learndashId: userId }
+        });
+        if (existing && existing.id !== student.id) {
+          await this.whatsapp.sendMessage(replyJid, `❌ Error: LearnDash ID ${userId} is already linked to student *${existing.name}*.`);
+          return;
+        }
+
+        await this.whatsapp.sendMessage(replyJid, `⏳ Verifying LearnDash ID ${userId} against WordPress...`);
+        const verifyRes = await this.learndash.verifyUserId(userId);
+        if (!verifyRes.exists) {
+          if (verifyRes.error) {
+            await this.whatsapp.sendMessage(replyJid, `⚠️ Verification connection error: ${verifyRes.error}. ID update bypassed and saved anyway.`);
+          } else {
+            await this.whatsapp.sendMessage(replyJid, `❌ Verification failed: LearnDash account ID ${userId} was not found on WordPress.`);
+            return;
+          }
+        }
+
+        await this.db.student.update({
+          where: { id: student.id },
+          data: { learndashId: userId }
+        });
+        
+        await logAudit('INFO', 'TEACHER_UPDATE_STUDENT_LD_ID', `Teacher updated student ${student.phoneNumber} ID to ${userId}`, msg.senderJid);
+        await this.whatsapp.sendMessage(replyJid, `✅ Successfully updated student *${student.name}* LearnDash ID to *${userId}*.`);
+      }
+    } catch (err: any) {
+      await this.whatsapp.sendMessage(replyJid, `❌ Failed to update profile: ${err.message}`);
+    }
   }
 }

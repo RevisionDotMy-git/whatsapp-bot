@@ -131,6 +131,25 @@ export class LearnDashService implements ILearnDashClient {
     }
   }
 
+  async verifyUserId(userId: number): Promise<{ exists: boolean; error?: string }> {
+    try {
+      const headers = await this.getAuthHeaders();
+      const url = `${CONFIG.LEARNDASH.BASE_URL}/wp-json/wp/v2/users/${userId}`;
+
+      const response = await fetch(url, { headers });
+      if (response.status === 200) {
+        return { exists: true };
+      } else if (response.status === 404) {
+        return { exists: false };
+      } else {
+        return { exists: false, error: `WordPress server returned status: ${response.status}` };
+      }
+    } catch (err: any) {
+      await logAudit('ERROR', 'LEARNDASH_USER_VERIFICATION_FAIL', `Failed to verify user ID ${userId}: ${err.message}`);
+      return { exists: false, error: err.message || 'Unknown network error' };
+    }
+  }
+
   isCacheAvailable(): boolean {
     const cacheFilePath = path.join(process.cwd(), 'data', 'learndash_cache.json');
     return fs.existsSync(cacheFilePath);

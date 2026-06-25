@@ -34,9 +34,24 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
       studentWorkshop: {
         findFirst: vi.fn(),
         findMany: vi.fn(),
+        create: vi.fn(),
+        upsert: vi.fn(),
       },
       homework: {
         findFirst: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        findMany: vi.fn(),
+      },
+      student: {
+        findFirst: vi.fn(),
+        findUnique: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+      },
+      teacher: {
+        findFirst: vi.fn(),
+        findUnique: vi.fn(),
         create: vi.fn(),
         update: vi.fn(),
       },
@@ -51,9 +66,13 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
     whatsappMock = {
       sendMessage: vi.fn().mockResolvedValue(undefined),
       getGroups: vi.fn().mockResolvedValue([]),
+      addParticipants: vi.fn().mockResolvedValue(undefined),
+      getGroupInviteCode: vi.fn().mockResolvedValue('inviteCode'),
     };
 
-    learndashMock = {};
+    learndashMock = {
+      verifyUserId: vi.fn(),
+    };
     llmMock = {};
 
     orchestrator = new OrchestratorService(dbMock, whatsappMock, learndashMock, llmMock);
@@ -501,6 +520,347 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
       '248030116757531@lid',
       expect.stringContaining('Lesson 1 Homework')
     );
+  });
+
+  describe('New commands /help, /invite, /profile, /add and onboarding DM flow', () => {
+    const teacherJid = '60122082435@s.whatsapp.net';
+    const studentJid = '60123456789@s.whatsapp.net';
+    let mockWorkshop: any;
+
+    beforeEach(() => {
+      mockWorkshop = {
+        id: 'workshop-123',
+        subject: 'SPM Physics',
+        courseId: 201,
+        whatsappJid: 'group-123@g.us',
+        meetingLink: 'https://meet.google.com/abc-defg-hij',
+        teacher: { phoneNumber: teacherJid, name: 'Cikgu Sarah' },
+        students: [
+          {
+            student: {
+              id: 'student-111',
+              name: 'John Doe',
+              phoneNumber: studentJid,
+              learndashId: 1001,
+            }
+          }
+        ],
+      };
+    });
+
+    it('should reply with teacher help instructions when /help is run by the teacher', async () => {
+      dbMock.workshop.findFirst.mockResolvedValue(mockWorkshop);
+
+      const msg: IncomingMessage = {
+        senderJid: teacherJid,
+        chatJid: 'group-123@g.us',
+        text: '/help',
+        isGroup: true,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        'group-123@g.us',
+        expect.stringContaining('Teacher Command Guide')
+      );
+    });
+
+    it('should reply with student help instructions when /help is run by a student', async () => {
+      dbMock.workshop.findFirst.mockResolvedValue(mockWorkshop);
+      dbMock.studentWorkshop.findFirst.mockResolvedValue({
+        studentId: 'student-111',
+        workshopId: mockWorkshop.id,
+        workshop: mockWorkshop,
+      });
+
+      const msg: IncomingMessage = {
+        senderJid: studentJid,
+        chatJid: 'group-123@g.us',
+        text: '/help',
+        isGroup: true,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        'group-123@g.us',
+        expect.stringContaining('Student Command Guide')
+      );
+    });
+
+    it('should execute /invite student <phone> <name> correctly, create a student record with placeholder negative id, and send onboarding welcome message', async () => {
+      dbMock.workshop.findFirst.mockResolvedValue(mockWorkshop);
+      dbMock.student.findUnique = vi.fn().mockResolvedValue(null);
+      dbMock.student.create = vi.fn().mockResolvedValue({
+        id: 'new-student-id',
+        name: 'Jane Smith',
+        phoneNumber: '60199998888@s.whatsapp.net',
+        learndashId: -12345,
+      });
+
+      const msg: IncomingMessage = {
+        senderJid: teacherJid,
+        chatJid: 'group-123@g.us',
+        text: '/invite student 60199998888 Jane Smith',
+        isGroup: true,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(dbMock.student.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            name: 'Jane Smith',
+            phoneNumber: '60199998888@s.whatsapp.net',
+            learndashId: expect.any(Number),
+          }),
+        })
+      );
+
+      // Verify onboarding DM sent to the new student
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        '60199998888@s.whatsapp.net',
+        expect.stringContaining('How to find your LearnDash User ID')
+      );
+
+      // Verify teacher received success confirmation
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        'group-123@g.us',
+        expect.stringContaining('Jane Smith* invited. Onboarding DM sent.')
+      );
+    });
+
+    it('should process WordPress user ID reply from pending onboarding student successfully', async () => {
+      const pendingStudent = {
+        id: 'student-pending-1',
+        name: 'Jane Smith',
+        phoneNumber: studentJid,
+        learndashId: -555,
+      };
+
+      dbMock.student.findFirst = vi.fn().mockResolvedValue(pendingStudent);
+      dbMock.student.findUnique = vi.fn().mockResolvedValue(null);
+      dbMock.student.update = vi.fn().mockResolvedValue(pendingStudent);
+      learndashMock.verifyUserId.mockResolvedValue({ exists: true });
+
+      const msg: IncomingMessage = {
+        senderJid: studentJid,
+        chatJid: studentJid,
+        text: '248030116',
+        isGroup: false,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(learndashMock.verifyUserId).toHaveBeenCalledWith(248030116);
+      expect(dbMock.student.update).toHaveBeenCalledWith({
+        where: { id: pendingStudent.id },
+        data: { learndashId: 248030116 },
+      });
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        studentJid,
+        expect.stringContaining('LearnDash ID linked')
+      );
+    });
+
+    it('should send the help guide when unverified LearnDash User ID is received from a pending student', async () => {
+      const pendingStudent = {
+        id: 'student-pending-1',
+        name: 'Jane Smith',
+        phoneNumber: studentJid,
+        learndashId: -555,
+      };
+
+      dbMock.student.findFirst = vi.fn().mockResolvedValue(pendingStudent);
+      learndashMock.verifyUserId.mockResolvedValue({ exists: false });
+
+      const msg: IncomingMessage = {
+        senderJid: studentJid,
+        chatJid: studentJid,
+        text: '9999999',
+        isGroup: false,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        studentJid,
+        expect.stringContaining('How to find your LearnDash User ID')
+      );
+    });
+
+    it('should send help guide when a pending student replies with non-digit text', async () => {
+      const pendingStudent = {
+        id: 'student-pending-1',
+        name: 'Jane Smith',
+        phoneNumber: studentJid,
+        learndashId: -555,
+      };
+
+      dbMock.student.findFirst = vi.fn().mockResolvedValue(pendingStudent);
+
+      const msg: IncomingMessage = {
+        senderJid: studentJid,
+        chatJid: studentJid,
+        text: 'how do i link it?',
+        isGroup: false,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        studentJid,
+        expect.stringContaining('How to find your LearnDash User ID')
+      );
+    });
+
+    it('should cancel onboarding when a pending student replies with cancel or n/a', async () => {
+      const pendingStudent = {
+        id: 'student-pending-1',
+        name: 'Jane Smith',
+        phoneNumber: studentJid,
+        learndashId: -555,
+      };
+
+      dbMock.student.findFirst = vi.fn().mockResolvedValue(pendingStudent);
+
+      const msg: IncomingMessage = {
+        senderJid: studentJid,
+        chatJid: studentJid,
+        text: 'N/A',
+        isGroup: false,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        studentJid,
+        expect.stringContaining('Profile linking canceled')
+      );
+    });
+
+    it('should update profile name using /profile name command', async () => {
+      dbMock.workshop.findFirst.mockResolvedValue(mockWorkshop);
+      const studentToEdit = {
+        id: 'student-edit-id',
+        name: 'Old Name',
+        phoneNumber: studentJid,
+        learndashId: 1001,
+      };
+      dbMock.student.findUnique = vi.fn().mockResolvedValue(studentToEdit);
+      dbMock.student.update = vi.fn().mockResolvedValue(studentToEdit);
+
+      const msg: IncomingMessage = {
+        senderJid: teacherJid,
+        chatJid: 'group-123@g.us',
+        text: '/profile 60123456789 name New Name',
+        isGroup: true,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(dbMock.student.update).toHaveBeenCalledWith({
+        where: { id: studentToEdit.id },
+        data: { name: 'New Name' },
+      });
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        'group-123@g.us',
+        expect.stringContaining('updated student name to')
+      );
+    });
+
+    it('should update profile id using /profile id command after verifying against LearnDash', async () => {
+      dbMock.workshop.findFirst.mockResolvedValue(mockWorkshop);
+      const studentToEdit = {
+        id: 'student-edit-id',
+        name: 'Jane Smith',
+        phoneNumber: studentJid,
+        learndashId: 1001,
+      };
+      dbMock.student.findUnique = vi.fn().mockResolvedValue(studentToEdit);
+      dbMock.student.update = vi.fn().mockResolvedValue(studentToEdit);
+      learndashMock.verifyUserId.mockResolvedValue({ exists: true });
+
+      const msg: IncomingMessage = {
+        senderJid: teacherJid,
+        chatJid: 'group-123@g.us',
+        text: '/profile 60123456789 id 248030116',
+        isGroup: true,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(learndashMock.verifyUserId).toHaveBeenCalledWith(248030116);
+      expect(dbMock.student.update).toHaveBeenCalledWith({
+        where: { id: studentToEdit.id },
+        data: { learndashId: 248030116 },
+      });
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        'group-123@g.us',
+        expect.stringContaining('updated student *Jane Smith* LearnDash ID to')
+      );
+    });
+
+    it('should add student to group when /add command is run, falling back to invite code DM if blocked', async () => {
+      dbMock.workshop.findFirst.mockResolvedValue(mockWorkshop);
+      const targetStudent = {
+        id: 'student-target-id',
+        name: 'Jane Smith',
+        phoneNumber: '60199998888@s.whatsapp.net',
+        learndashId: 1001,
+      };
+      dbMock.student.findUnique = vi.fn().mockResolvedValue(targetStudent);
+
+      // Case A: direct add works
+      const msgDirect: IncomingMessage = {
+        senderJid: teacherJid,
+        chatJid: 'group-123@g.us',
+        text: '/add 60199998888 Physics',
+        isGroup: true,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msgDirect);
+
+      expect(whatsappMock.addParticipants).toHaveBeenCalledWith('group-123@g.us', ['60199998888@s.whatsapp.net']);
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        'group-123@g.us',
+        expect.stringContaining('Enrolled *Jane Smith* in *SPM Physics*')
+      );
+
+      // Case B: direct add fails due to privacy settings, falls back to group invite link
+      whatsappMock.addParticipants.mockRejectedValue(new Error('direct add blocked'));
+
+      const msgFallback: IncomingMessage = {
+        senderJid: teacherJid,
+        chatJid: 'group-123@g.us',
+        text: '/add 60199998888 Physics',
+        isGroup: true,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msgFallback);
+
+      expect(whatsappMock.getGroupInviteCode).toHaveBeenCalledWith('group-123@g.us');
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        '60199998888@s.whatsapp.net',
+        expect.stringContaining('https://chat.whatsapp.com/inviteCode')
+      );
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        'group-123@g.us',
+        expect.stringContaining('Direct add blocked by privacy; group invite link DM-ed')
+      );
+    });
   });
 });
 

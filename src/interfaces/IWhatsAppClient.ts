@@ -49,6 +49,11 @@ export interface IWhatsAppClient {
   promoteAdmins(groupJid: string, participants: string[]): Promise<void>;
 
   /**
+   * Fetches the group invite code for a WhatsApp group JID
+   */
+  getGroupInviteCode(groupJid: string): Promise<string>;
+
+  /**
    * Registers a listener callback for incoming WhatsApp messages
    */
   onMessage(callback: (message: IncomingMessage) => Promise<void> | void): void;

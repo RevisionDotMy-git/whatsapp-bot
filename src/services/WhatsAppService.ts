@@ -276,6 +276,17 @@ export class WhatsAppService implements IWhatsAppClient {
     }
   }
 
+  async getGroupInviteCode(groupJid: string): Promise<string> {
+    if (!this.sock || !this.isReady) throw new Error('WhatsApp client not initialized or not connected');
+    try {
+      const code = await this.sock.groupInviteCode(groupJid);
+      return code || '';
+    } catch (err: any) {
+      await logAudit('ERROR', 'WHATSAPP_GET_INVITE_CODE_FAILED', `Failed to fetch group invite code for ${groupJid}: ${err.message}`);
+      throw err;
+    }
+  }
+
   async downloadDocument(attachment: DocumentAttachment): Promise<Buffer> {
     try {
       const stream = await downloadContentFromMessage(

@@ -175,6 +175,124 @@ server.post('/api/workshop/:id/students/import', async (request, reply) => {
 });
 
 /**
+ * Endpoint to enroll an individual student to a Workshop
+ */
+server.post('/api/workshop/:id/student', async (request, reply) => {
+  const { id: workshopId } = request.params as { id: string };
+  const studentData = request.body as { name: string; phoneNumber: string; learndashId: number };
+
+  try {
+    const workshop = await prisma.workshop.findUnique({
+      where: { id: workshopId },
+      include: { teacher: true },
+    });
+
+    if (!workshop) {
+      return reply.status(404).send({ error: 'Workshop not found.' });
+    }
+
+    // 1. Create or update student record
+    const student = await prisma.student.upsert({
+      where: { phoneNumber: studentData.phoneNumber },
+      create: {
+        name: studentData.name,
+        phoneNumber: studentData.phoneNumber,
+        learndashId: studentData.learndashId,
+      },
+      update: {
+        name: studentData.name,
+        learndashId: studentData.learndashId,
+      },
+    });
+
+    // 2. Enroll in Workshop
+    await prisma.studentWorkshop.upsert({
+      where: {
+        studentId_workshopId: {
+          studentId: student.id,
+          workshopId,
+        },
+      },
+      create: {
+        studentId: student.id,
+        workshopId,
+      },
+      update: {},
+    });
+
+    await logAudit(
+      'INFO',
+      'API_STUDENT_ENROLLED',
+      `Registered and enrolled student "${student.name}" to workshop "${workshop.subject}".`
+    );
+
+    // 3. Asynchronously invite/add student to the WhatsApp group
+    setImmediate(async () => {
+      if (workshop.whatsappJid) {
+        try {
+          // Attempt to add student directly
+          await whatsapp.addParticipants(workshop.whatsappJid, [student.phoneNumber]);
+          await whatsapp.sendMessage(
+            workshop.whatsappJid,
+            `👋 Welcome *${student.name}* to our *${workshop.subject}* WhatsApp group class!`
+          );
+        } catch (addErr: any) {
+          // Direct add failed (privacy settings). Fall back to invite link.
+          try {
+            const code = await whatsapp.getGroupInviteCode(workshop.whatsappJid);
+            const inviteUrl = `https://chat.whatsapp.com/${code}`;
+            
+            await whatsapp.sendMessage(
+              student.phoneNumber,
+              `👋 Hello *${student.name}*!\n` +
+              `You have been enrolled in *${workshop.subject}* class.\n` +
+              `Please tap this link to join the class WhatsApp group:\n` +
+              `🔗 ${inviteUrl}`
+            );
+          } catch (inviteErr: any) {
+            await logAudit(
+              'ERROR',
+              'WHATSAPP_STUDENT_ADD_FAIL',
+              `Failed adding student to group and sending invite URL: ${inviteErr.message}`,
+              student.phoneNumber
+            );
+          }
+        }
+      }
+
+      // If student is pending profile linking, send onboarding DM
+      if (student.learndashId < 0) {
+        try {
+          const welcomeMessage = 
+            `👋 Hello *${student.name}*!\n` +
+            `You have been registered for class tracking.\n\n` +
+            `Please reply directly to this message with your *WordPress/LearnDash User ID* (numbers only) to link your account.\n\n` +
+            `👉 Reply with: your ID number (e.g. *12345*)\n` +
+            `❌ Reply with: *N/A* to cancel this update.\n\n` +
+            `ℹ️ *How to find your LearnDash User ID*:\n` +
+            `1. Log in to your account at *course.revision.my*\n` +
+            `2. Tap on "Profile" (under the menu or avatar).\n` +
+            `3. Your User ID is displayed under your profile avatar/name, or visible in your browser profile URL.`;
+          
+          await whatsapp.sendMessage(student.phoneNumber, welcomeMessage);
+        } catch (err: any) {
+          await logAudit('ERROR', 'API_STUDENT_ONBOARDING_DM_FAIL', `Failed sending onboarding DM to ${student.phoneNumber}: ${err.message}`);
+        }
+      }
+    });
+
+    return reply.send({
+      message: `Enrolled student "${student.name}". Group sync triggered in background.`,
+      studentId: student.id,
+    });
+  } catch (err: any) {
+    server.log.error(err);
+    await logAudit('ERROR', 'API_STUDENT_ENROLL_FAIL', `Individual student enrollment failed: ${err.message}`);
+    return reply.status(500).send({ error: 'Failed to enroll student.' });
+  }
+});
+
+/**
  * Webhook triggered when a student submits an assignment on LearnDash
  */
 server.post('/api/webhook/submission', async (request, reply) => {

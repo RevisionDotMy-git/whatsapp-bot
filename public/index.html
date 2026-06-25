@@ -155,99 +155,141 @@
       <section id="content-classes" class="space-y-6">
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          <!-- Registration form -->
-          <div class="lg:col-span-2 glass-panel rounded-2xl p-6 shadow-xl space-y-6">
-            <div>
-              <h2 class="text-lg font-bold font-outfit text-white flex items-center space-x-2">
-                <i class="fa-solid fa-folder-plus text-brand-400"></i>
-                <span>Register Revision Workshop Class</span>
-              </h2>
-              <p class="text-xs text-gray-400 mt-1">Add workshop metadata and link it to WordPress LearnDash</p>
-            </div>
-            
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- Left Column (Class Registration & Student Enrollment) -->
+          <div class="lg:col-span-2 space-y-6">
+            <!-- Registration form -->
+            <div class="glass-panel rounded-2xl p-6 shadow-xl space-y-6">
               <div>
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="subject">Workshop Subject</label>
-                <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="text" id="subject" placeholder="e.g. SPM Physics Complete">
+                <h2 class="text-lg font-bold font-outfit text-white flex items-center space-x-2">
+                  <i class="fa-solid fa-folder-plus text-brand-400"></i>
+                  <span>Register Revision Workshop Class</span>
+                </h2>
+                <p class="text-xs text-gray-400 mt-1">Add workshop metadata and link it to WordPress LearnDash</p>
               </div>
-              <div>
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="courseId">LearnDash Course ID</label>
-                <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="number" id="courseId" placeholder="e.g. 101">
-              </div>
-              <div class="sm:col-span-2">
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="meetingLink">Class Meet Link</label>
-                <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="url" id="meetingLink" placeholder="https://meet.google.com/abc-defg-hij">
-              </div>
-              <div>
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="classDay">Class Day</label>
-                <select class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" id="classDay">
-                  <option value="0">Sunday</option>
-                  <option value="1">Monday</option>
-                  <option value="2">Tuesday</option>
-                  <option value="3">Wednesday</option>
-                  <option value="4">Thursday</option>
-                  <option value="5">Friday</option>
-                  <option value="6">Saturday</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="classTime">Class Time</label>
-                <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="time" id="classTime" value="20:00">
-              </div>
-              <div>
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="teacherName">Teacher Name</label>
-                <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="text" id="teacherName" placeholder="e.g. Cikgu Sarah">
-              </div>
-              <div>
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="teacherPhone">Teacher Phone / JID</label>
-                <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="text" id="teacherPhone" placeholder="e.g. 60122082435">
-              </div>
-            </div>
-
-            <!-- CSV Upload Panel Inside setup -->
-            <div class="border-t border-white/5 pt-5 space-y-4">
-              <div>
-                <h3 class="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center space-x-1.5">
-                  <i class="fa-solid fa-file-csv text-brand-400"></i>
-                  <span>Import Students (CSV Roster)</span>
-                </h3>
-                <p class="text-[11px] text-gray-400">Specify columns: <code>name</code>, <code>phoneNumber</code>, <code>learndashId</code>, <code>level</code> (for auto prefixing like <code>form5-name</code>)</p>
-              </div>
-
-              <div class="flex items-center space-x-3">
-                <div class="flex-grow relative border border-dashed border-white/10 hover:border-brand-500/50 rounded-xl p-4 text-center bg-dark-900/35 transition cursor-pointer">
-                  <input type="file" id="csvFile" accept=".csv" onchange="parseCSV(event)" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
-                  <span class="text-xs font-medium text-gray-300" id="csv-label"><i class="fa-solid fa-upload mr-1.5"></i>Upload student roster CSV</span>
+              
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="subject">Workshop Subject</label>
+                  <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="text" id="subject" placeholder="e.g. SPM Physics Complete">
                 </div>
-                <button onclick="downloadTemplate()" class="px-3.5 py-2.5 bg-dark-800 text-gray-300 hover:text-white rounded-xl border border-white/5 text-xs transition flex items-center space-x-1">
-                  <i class="fa-solid fa-file-arrow-down"></i>
-                  <span>Template</span>
+                <div>
+                  <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="courseId">LearnDash Course ID</label>
+                  <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="number" id="courseId" placeholder="e.g. 101">
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="meetingLink">Class Meet Link</label>
+                  <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="url" id="meetingLink" placeholder="https://meet.google.com/abc-defg-hij">
+                </div>
+                <div>
+                  <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="classDay">Class Day</label>
+                  <select class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" id="classDay">
+                    <option value="0">Sunday</option>
+                    <option value="1">Monday</option>
+                    <option value="2">Tuesday</option>
+                    <option value="3">Wednesday</option>
+                    <option value="4">Thursday</option>
+                    <option value="5">Friday</option>
+                    <option value="6">Saturday</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="classTime">Class Time</label>
+                  <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="time" id="classTime" value="20:00">
+                </div>
+                <div>
+                  <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="teacherName">Teacher Name</label>
+                  <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="text" id="teacherName" placeholder="e.g. Cikgu Sarah">
+                </div>
+                <div>
+                  <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="teacherPhone">Teacher Phone / JID</label>
+                  <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="text" id="teacherPhone" placeholder="e.g. 60122082435">
+                </div>
+              </div>
+
+              <!-- CSV Upload Panel Inside setup -->
+              <div class="border-t border-white/5 pt-5 space-y-4">
+                <div>
+                  <h3 class="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center space-x-1.5">
+                    <i class="fa-solid fa-file-csv text-brand-400"></i>
+                    <span>Import Students (CSV Roster - Optional)</span>
+                  </h3>
+                  <p class="text-[11px] text-gray-400">Specify columns: <code>name</code>, <code>phoneNumber</code>, <code>learndashId</code>, <code>level</code> (for auto prefixing like <code>form5-name</code>)</p>
+                </div>
+
+                <div class="flex items-center space-x-3">
+                  <div class="flex-grow relative border border-dashed border-white/10 hover:border-brand-500/50 rounded-xl p-4 text-center bg-dark-900/35 transition cursor-pointer">
+                    <input type="file" id="csvFile" accept=".csv" onchange="parseCSV(event)" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                    <span class="text-xs font-medium text-gray-300" id="csv-label"><i class="fa-solid fa-upload mr-1.5"></i>Upload student roster CSV</span>
+                  </div>
+                  <button onclick="downloadTemplate()" class="px-3.5 py-2.5 bg-dark-800 text-gray-300 hover:text-white rounded-xl border border-white/5 text-xs transition flex items-center space-x-1">
+                    <i class="fa-solid fa-file-arrow-down"></i>
+                    <span>Template</span>
+                  </button>
+                </div>
+
+                <!-- List preview table -->
+                <div id="preview-section" class="hidden space-y-2">
+                  <h4 class="text-xs font-semibold text-gray-400">Roster Preview:</h4>
+                  <div class="max-h-40 overflow-y-auto rounded-xl border border-white/5 custom-scrollbar bg-dark-950/40">
+                    <table class="w-full text-left text-xs border-collapse">
+                      <thead class="sticky top-0 bg-dark-800/90 text-gray-400 border-b border-white/5 uppercase tracking-wider font-semibold">
+                        <tr>
+                          <th class="px-3 py-2 text-[10px]">Formatted Name</th>
+                          <th class="px-3 py-2 text-[10px]">WhatsApp Phone</th>
+                          <th class="px-3 py-2 text-[10px]">LD ID</th>
+                        </tr>
+                      </thead>
+                      <tbody id="roster-tbody" class="text-gray-300 divide-y divide-white/5"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex justify-end pt-2">
+                <button onclick="createClass()" class="px-6 py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold transition flex items-center space-x-2 shadow-lg shadow-brand-600/25">
+                  <i class="fa-solid fa-circle-check"></i>
+                  <span>Register Class & Setup Roster</span>
                 </button>
               </div>
-
-              <!-- List preview table -->
-              <div id="preview-section" class="hidden space-y-2">
-                <h4 class="text-xs font-semibold text-gray-400">Roster Preview:</h4>
-                <div class="max-h-40 overflow-y-auto rounded-xl border border-white/5 custom-scrollbar bg-dark-950/40">
-                  <table class="w-full text-left text-xs border-collapse">
-                    <thead class="sticky top-0 bg-dark-800/90 text-gray-400 border-b border-white/5 uppercase tracking-wider font-semibold">
-                      <tr>
-                        <th class="px-3 py-2 text-[10px]">Formatted Name</th>
-                        <th class="px-3 py-2 text-[10px]">WhatsApp Phone</th>
-                        <th class="px-3 py-2 text-[10px]">LD ID</th>
-                      </tr>
-                    </thead>
-                    <tbody id="roster-tbody" class="text-gray-300 divide-y divide-white/5"></tbody>
-                  </table>
-                </div>
-              </div>
             </div>
 
-            <div class="flex justify-end pt-2">
-              <button onclick="createClass()" class="px-6 py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold transition flex items-center space-x-2 shadow-lg shadow-brand-600/25">
-                <i class="fa-solid fa-circle-check"></i>
-                <span>Register Class & Import Roster</span>
-              </button>
+            <!-- Individual Enrollment form -->
+            <div class="glass-panel rounded-2xl p-6 shadow-xl space-y-6">
+              <div>
+                <h2 class="text-lg font-bold font-outfit text-white flex items-center space-x-2">
+                  <i class="fa-solid fa-user-plus text-brand-400"></i>
+                  <span>Register & Enroll Individual Student</span>
+                </h2>
+                <p class="text-xs text-gray-400 mt-1">Directly register a student in the database and add them to the WhatsApp group chat (or send invite link DM if blocked).</p>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="single-targetWorkshop">Target Workshop</label>
+                  <select id="single-targetWorkshop" class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs">
+                    <option value="">-- Choose Workshop --</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="single-studentName">Student Name</label>
+                  <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="text" id="single-studentName" placeholder="e.g. form5-Lynxx">
+                </div>
+                <div>
+                  <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="single-studentPhone">Student Phone / JID</label>
+                  <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="text" id="single-studentPhone" placeholder="e.g. 6012233678">
+                </div>
+                <div>
+                  <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5" for="single-studentLdId">LearnDash User ID (Optional)</label>
+                  <input class="glass-input w-full px-3.5 py-2.5 rounded-xl text-white text-xs" type="number" id="single-studentLdId" placeholder="Leave blank for profile onboarding invitation">
+                </div>
+              </div>
+
+              <div class="flex justify-end pt-2">
+                <button onclick="enrollIndividualStudent()" class="px-6 py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold transition flex items-center space-x-2 shadow-lg shadow-brand-600/25">
+                  <i class="fa-solid fa-user-plus"></i>
+                  <span>Register & Enroll Student</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -801,11 +843,6 @@
         return;
       }
 
-      if (parsedStudents.length === 0) {
-        showToast('Roster Required', 'Please upload a CSV student roster file.', 'error');
-        return;
-      }
-
       try {
         // 1. Create class
         const wsResponse = await fetch('/api/workshop', {
@@ -822,19 +859,29 @@
           })
         });
 
-        if (!wsResponse.ok) throw new Error('Failed to create workshop class.');
+        if (!wsResponse.ok) {
+          const errData = await wsResponse.json();
+          throw new Error(errData.error || 'Failed to create workshop class.');
+        }
         const wsData = await wsResponse.json();
 
-        // 2. Import students
-        const importResponse = await fetch(`/api/workshop/${wsData.workshopId}/students/import`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(parsedStudents)
-        });
+        let importMsg = '';
+        // 2. Import students if roster uploaded
+        if (parsedStudents.length > 0) {
+          const importResponse = await fetch(`/api/workshop/${wsData.workshopId}/students/import`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(parsedStudents)
+          });
 
-        if (!importResponse.ok) throw new Error('Failed to import student roster.');
+          if (!importResponse.ok) {
+            const errData = await importResponse.json();
+            throw new Error(errData.error || 'Failed to import student roster.');
+          }
+          importMsg = ` and enrolled ${parsedStudents.length} students`;
+        }
 
-        showToast('Class Setup Success!', `Successfully set up "${subject}" and enrolled ${parsedStudents.length} students.`, 'success');
+        showToast('Class Setup Success!', `Successfully set up class "${subject}"${importMsg}.`, 'success');
         
         // Reset Inputs
         document.getElementById('subject').value = '';
@@ -846,7 +893,7 @@
         document.getElementById('preview-section').classList.add('hidden');
         parsedStudents = [];
 
-        fetchWorkshops();
+        await fetchWorkshops();
       } catch (err) {
         console.error(err);
         showToast('Setup Failed', err.message, 'error');
@@ -887,6 +934,7 @@
           </div>
         `).join('');
         container.classList.remove('hidden');
+        populateWorkshopDropdowns();
       } catch (err) {
         console.error(err);
         loader.classList.add('hidden');
@@ -897,7 +945,7 @@
 
     // Populate dropdowns for tabs
     function populateWorkshopDropdowns() {
-      const dropdowns = ['hw-workshop', 'hw-filter-select', 'reminder-workshop-select', 'report-workshop-select'];
+      const dropdowns = ['hw-workshop', 'hw-filter-select', 'reminder-workshop-select', 'report-workshop-select', 'single-targetWorkshop'];
       dropdowns.forEach(id => {
         const select = document.getElementById(id);
         if (!select) return;
@@ -915,6 +963,63 @@
         // Restore value
         select.value = currentVal;
       });
+    }
+
+    // API: Enroll Individual Student
+    async function enrollIndividualStudent() {
+      const workshopId = document.getElementById('single-targetWorkshop').value;
+      const name = document.getElementById('single-studentName').value.trim();
+      let phone = document.getElementById('single-studentPhone').value.trim();
+      const ldIdInput = document.getElementById('single-studentLdId').value.trim();
+
+      if (!workshopId || !name || !phone) {
+        showToast('Required Fields Missing', 'Please select a workshop, enter student name, and phone number.', 'error');
+        return;
+      }
+
+      // Clean phone number
+      phone = phone.replace(/\D/g, '');
+      if (phone.startsWith('0')) {
+        phone = '60' + phone.substring(1);
+      }
+      let cleanJid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
+      if (phone.length > 13) {
+        cleanJid = `${phone}@lid`;
+      }
+
+      // Handle optional LearnDash ID
+      let learndashId = parseInt(ldIdInput, 10);
+      if (isNaN(learndashId)) {
+        // Generate a negative pending ID to trigger onboarding invite flow
+        learndashId = -Math.floor(Date.now() / 1000) - Math.floor(Math.random() * 10000);
+      }
+
+      try {
+        const response = await fetch(`/api/workshop/${workshopId}/student`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name,
+            phoneNumber: cleanJid,
+            learndashId
+          })
+        });
+
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to enroll student.');
+
+        showToast('Student Enrolled Success!', data.message, 'success');
+
+        // Reset inputs
+        document.getElementById('single-studentName').value = '';
+        document.getElementById('single-studentPhone').value = '';
+        document.getElementById('single-studentLdId').value = '';
+
+        await fetchWorkshops();
+      } catch (err) {
+        console.error(err);
+        showToast('Enrollment Failed', err.message, 'error');
+      }
     }
 
     // API: Fetch LearnDash Courses

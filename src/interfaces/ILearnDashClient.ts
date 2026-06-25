@@ -44,4 +44,9 @@ export interface ILearnDashClient {
    * Programmatically submits grade and evaluation comments back to LearnDash
    */
   submitGradeAndComment(assignmentId: number, score: number, comment: string): Promise<void>;
+
+  /**
+   * Verifies if a WordPress user ID exists on the server
+   */
+  verifyUserId(userId: number): Promise<{ exists: boolean; error?: string }>;
 }
