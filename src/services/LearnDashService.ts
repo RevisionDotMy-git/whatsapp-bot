@@ -31,6 +31,7 @@ export class LearnDashService implements ILearnDashClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         },
         body: JSON.stringify({
           username: CONFIG.LEARNDASH.JWT_USERNAME,
@@ -60,6 +61,7 @@ export class LearnDashService implements ILearnDashClient {
     return {
       'Authorization': `Bearer ${this.jwtToken}`,
       'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     };
   }
 
