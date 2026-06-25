@@ -57,8 +57,8 @@ export function parseCommand(
     isAuthorized = true;
   } else if (role === 'student') {
     if (commandName === 'homework') {
-      // Students are only authorized to check the homework list (no arguments)
-      isAuthorized = args.length === 0;
+      // Students are authorized to check homework (no args or 'check') or mark it completed ('done')
+      isAuthorized = args.length === 0 || args[0].toLowerCase() === 'check' || args[0].toLowerCase() === 'done';
     } else if (studentAllowedCommands.includes(commandName)) {
       isAuthorized = true;
     }

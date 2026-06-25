@@ -57,6 +57,9 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
       },
       progressLog: {
         upsert: vi.fn(),
+        findMany: vi.fn(),
+        findFirst: vi.fn(),
+        update: vi.fn(),
       },
       auditLog: {
         create: vi.fn(),
@@ -489,7 +492,16 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
       workshop: mockWorkshop,
     });
 
-    dbMock.homework.findMany = vi.fn().mockResolvedValue(mockWorkshop.homeworks);
+    dbMock.student.findUnique.mockResolvedValue(mockStudent);
+    dbMock.progressLog.findMany.mockResolvedValue([
+      {
+        id: 'progress-1',
+        studentId: mockStudent.id,
+        homeworkId: 'homework-01',
+        status: 'NOT_STARTED',
+        homework: mockWorkshop.homeworks[0],
+      }
+    ]);
 
     const lidMessage: IncomingMessage = {
       senderJid: '248030116757531@lid',      // Message arrives with LID JID
@@ -859,6 +871,99 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
       expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
         'group-123@g.us',
         expect.stringContaining('Direct add blocked by privacy; group invite link DM-ed')
+      );
+    });
+
+    it('should list pending homework when student runs /homework check or /homework', async () => {
+      dbMock.workshop.findFirst.mockResolvedValue(mockWorkshop);
+      const student = {
+        id: 'student-789',
+        name: 'John Doe',
+        phoneNumber: studentJid,
+        learndashId: 1001,
+      };
+      dbMock.student.findUnique = vi.fn().mockResolvedValue(student);
+      dbMock.progressLog.findMany = vi.fn().mockResolvedValue([
+        {
+          id: 'progress-1',
+          studentId: student.id,
+          homeworkId: 'homework-01',
+          status: 'NOT_STARTED',
+          homework: { id: 'homework-01', title: 'Lesson 1 Homework', dueDate: new Date('2026-06-26') },
+        }
+      ]);
+
+      const msg: IncomingMessage = {
+        senderJid: studentJid,
+        chatJid: 'group-123@g.us',
+        text: '/homework check',
+        isGroup: true,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(dbMock.student.findUnique).toHaveBeenCalledWith({ where: { phoneNumber: studentJid } });
+      expect(dbMock.progressLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          studentId: student.id,
+          status: { not: 'COMPLETED' },
+        })
+      }));
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        'group-123@g.us',
+        expect.stringContaining('Lesson 1 Homework')
+      );
+    });
+
+    it('should mark oldest pending homework completed when student runs /homework done', async () => {
+      dbMock.workshop.findFirst.mockResolvedValue(mockWorkshop);
+      const student = {
+        id: 'student-789',
+        name: 'John Doe',
+        phoneNumber: studentJid,
+        learndashId: 1001,
+      };
+      dbMock.student.findUnique = vi.fn().mockResolvedValue(student);
+      const pendingLog = {
+        id: 'progress-1',
+        studentId: student.id,
+        homeworkId: 'homework-01',
+        status: 'NOT_STARTED',
+        homework: { id: 'homework-01', title: 'Lesson 1 Homework', dueDate: new Date('2026-06-26') },
+      };
+      dbMock.progressLog.findFirst = vi.fn().mockResolvedValue(pendingLog);
+      dbMock.progressLog.update = vi.fn().mockResolvedValue({
+        ...pendingLog,
+        status: 'COMPLETED',
+      });
+
+      const msg: IncomingMessage = {
+        senderJid: studentJid,
+        chatJid: 'group-123@g.us',
+        text: '/homework done',
+        isGroup: true,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(dbMock.progressLog.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          studentId: student.id,
+          status: { not: 'COMPLETED' },
+        })
+      }));
+      expect(dbMock.progressLog.update).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 'progress-1' },
+        data: expect.objectContaining({
+          status: 'COMPLETED',
+          submittedAt: expect.any(Date),
+        }),
+      }));
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        'group-123@g.us',
+        expect.stringContaining('Marked homework *Lesson 1 Homework* as completed')
       );
     });
   });

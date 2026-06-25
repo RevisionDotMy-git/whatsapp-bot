@@ -20,6 +20,7 @@ export class WhatsAppService implements IWhatsAppClient {
   private messageCallbacks: ((msg: IncomingMessage) => Promise<void> | void)[] = [];
   private participantCallbacks: ((event: { groupJid: string; participants: string[]; action: 'add' | 'remove' }) => Promise<void> | void)[] = [];
   private connectionOpenCallbacks: (() => Promise<void> | void)[] = [];
+  private sentMessageIds = new Set<string>();
 
   async connect(): Promise<void> {
     // If there is an existing socket, end it and remove its listeners
@@ -142,19 +143,16 @@ export class WhatsAppService implements IWhatsAppClient {
     sock.ev.on('messages.upsert', async (m) => {
       if (m.type === 'notify') {
         for (const msg of m.messages) {
+          // Ignore self messages to avoid infinite loops, but only if they were sent by the bot client programmatically
+          if (msg.key.fromMe && msg.key.id && this.sentMessageIds.has(msg.key.id)) {
+            continue;
+          }
+
           const senderJid = msg.key.participant || msg.key.remoteJid || '';
           const chatJid = msg.key.remoteJid || '';
           
           const docMessage = this.getDocumentMessage(msg.message);
           const text = this.getMessageText(msg.message);
-
-          const hasGoogleLink = typeof text === 'string' && /(?:docs|drive|sheets|forms|slides)\.google\.com/i.test(text);
-
-          // Ignore self messages to avoid infinite loops, but allow them if they contain a document, Google Link, or are commands
-          const isCommand = typeof text === 'string' && (text.trim().startsWith('/') || text.trim().toLowerCase().startsWith('@bot '));
-          if (msg.key.fromMe && !docMessage && !hasGoogleLink && !isCommand) {
-            continue;
-          }
 
           console.log(`📩 RECEIVED MESSAGE from ${senderJid} in chat ${chatJid}: "${text || (docMessage ? `[Document: ${docMessage.fileName}]` : '')}"`);
 
@@ -219,7 +217,15 @@ export class WhatsAppService implements IWhatsAppClient {
     if (!this.sock || !this.isReady) throw new Error('WhatsApp client not initialized or not connected');
 
     try {
-      await this.sock.sendMessage(jid, { text });
+      const sent = await this.sock.sendMessage(jid, { text });
+      if (sent?.key?.id) {
+        this.sentMessageIds.add(sent.key.id);
+        // Bounded size to prevent memory leaks
+        if (this.sentMessageIds.size > 1000) {
+          const firstKey = this.sentMessageIds.values().next().value;
+          if (firstKey) this.sentMessageIds.delete(firstKey);
+        }
+      }
     } catch (err: any) {
       await logAudit('ERROR', 'WHATSAPP_SEND_MSG_FAILED', `Failed to send message to ${jid}: ${err.message}`);
       throw err;

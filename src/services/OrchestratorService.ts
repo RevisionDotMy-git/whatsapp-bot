@@ -639,7 +639,13 @@ export class OrchestratorService {
         if (parsed.role === 'teacher') {
           await this.handleTeacherHomework(workshop.id, parsed.lessonId, parsed.dueDate!, msg.chatJid);
         } else if (parsed.role === 'student') {
-          await this.handleStudentHomeworkList(workshop.id, msg.chatJid);
+          const textParts = msg.text.trim().split(/\s+/);
+          const subCommand = (textParts[1] || '').toLowerCase();
+          if (subCommand === 'done') {
+            await this.handleStudentHomeworkDone(workshop.id, resolvedSenderJid, msg.chatJid);
+          } else {
+            await this.handleStudentHomeworkList(workshop.id, resolvedSenderJid, msg.chatJid);
+          }
         }
         break;
 
@@ -932,22 +938,94 @@ export class OrchestratorService {
   /**
    * Students query pending homework
    */
-  private async handleStudentHomeworkList(workshopId: string, replyJid: string): Promise<void> {
-    const homeworks = await this.db.homework.findMany({
-      where: { workshopId, dueDate: { gte: new Date() } },
-      orderBy: { dueDate: 'asc' },
+  private async handleStudentHomeworkList(
+    workshopId: string,
+    studentJid: string,
+    replyJid: string
+  ): Promise<void> {
+    const student = await this.db.student.findUnique({
+      where: { phoneNumber: studentJid },
     });
 
-    if (homeworks.length === 0) {
+    if (!student) {
+      await this.whatsapp.sendMessage(replyJid, '❌ You are not registered as a student in the database.');
+      return;
+    }
+
+    const progressLogs = await this.db.progressLog.findMany({
+      where: {
+        studentId: student.id,
+        homework: { workshopId },
+        status: { not: 'COMPLETED' },
+      },
+      include: { homework: true },
+      orderBy: { homework: { dueDate: 'asc' } },
+    });
+
+    if (progressLogs.length === 0) {
       await this.whatsapp.sendMessage(replyJid, '🎉 You have no pending homework tasks!');
       return;
     }
 
-    const listText = homeworks
-      .map(h => `- *${h.title}* (Due: ${h.dueDate.toDateString()})`)
+    const listText = progressLogs
+      .map(p => `- *${p.homework.title}* (Due: ${p.homework.dueDate.toDateString()})`)
       .join('\n');
 
     await this.whatsapp.sendMessage(replyJid, `📖 *Your Pending Homework Tasks:*\n\n${listText}`);
+  }
+
+  /**
+   * Students mark their oldest pending homework as completed
+   */
+  private async handleStudentHomeworkDone(
+    workshopId: string,
+    studentJid: string,
+    replyJid: string
+  ): Promise<void> {
+    const student = await this.db.student.findUnique({
+      where: { phoneNumber: studentJid },
+    });
+
+    if (!student) {
+      await this.whatsapp.sendMessage(replyJid, '❌ You are not registered as a student in the database.');
+      return;
+    }
+
+    const oldestPending = await this.db.progressLog.findFirst({
+      where: {
+        studentId: student.id,
+        homework: { workshopId },
+        status: { not: 'COMPLETED' },
+      },
+      include: { homework: true },
+      orderBy: { homework: { dueDate: 'asc' } },
+    });
+
+    if (!oldestPending) {
+      await this.whatsapp.sendMessage(replyJid, '🎉 You have no pending homework tasks to mark as done!');
+      return;
+    }
+
+    const updatedLog = await this.db.progressLog.update({
+      where: { id: oldestPending.id },
+      data: {
+        status: 'COMPLETED',
+        submittedAt: new Date(),
+      },
+      include: { homework: true },
+    });
+
+    await logAudit(
+      'INFO',
+      'STUDENT_MARK_HOMEWORK_DONE',
+      `Student ${student.name} (${student.phoneNumber}) marked homework "${updatedLog.homework.title}" as COMPLETED`,
+      studentJid
+    );
+
+    await this.whatsapp.sendMessage(
+      replyJid,
+      `✅ Marked homework *${updatedLog.homework.title}* as completed! Great job!`
+    );
   }
 
   /**
