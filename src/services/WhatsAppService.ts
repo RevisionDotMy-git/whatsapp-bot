@@ -150,8 +150,9 @@ export class WhatsAppService implements IWhatsAppClient {
 
           const hasGoogleLink = typeof text === 'string' && /(?:docs|drive|sheets|forms|slides)\.google\.com/i.test(text);
 
-          // Ignore self messages to avoid infinite loops, but allow them if they contain a document or Google Link
-          if (msg.key.fromMe && !docMessage && !hasGoogleLink) {
+          // Ignore self messages to avoid infinite loops, but allow them if they contain a document, Google Link, or are commands
+          const isCommand = typeof text === 'string' && (text.trim().startsWith('/') || text.trim().toLowerCase().startsWith('@bot '));
+          if (msg.key.fromMe && !docMessage && !hasGoogleLink && !isCommand) {
             continue;
           }
 
