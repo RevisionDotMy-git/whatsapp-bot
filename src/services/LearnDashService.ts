@@ -23,9 +23,10 @@ export interface CachedCourse {
 export class LearnDashService implements ILearnDashClient {
   private jwtToken: string | null = null;
   private useBasicAuth = false;
+  private baseUrl = CONFIG.LEARNDASH.BASE_URL.replace(/\/+$/, '');
 
   async authenticate(): Promise<string> {
-    const url = `${CONFIG.LEARNDASH.BASE_URL}/wp-json/jwt-auth/v1/token`;
+    const url = `${this.baseUrl}/wp-json/jwt-auth/v1/token`;
     
     try {
       const response = await fetch(url, {
@@ -83,7 +84,7 @@ export class LearnDashService implements ILearnDashClient {
   async getStudentCourseProgress(userId: number, courseId: number): Promise<CourseProgressResponse> {
     const headers = await this.getAuthHeaders();
     // Path for course progress in LearnDash
-    const url = `${CONFIG.LEARNDASH.BASE_URL}/wp-json/ldlms/v2/users/${userId}/courses/${courseId}/progress`;
+    const url = `${this.baseUrl}/wp-json/ldlms/v2/users/${userId}/courses/${courseId}/progress`;
 
     try {
       const response = await fetch(url, { headers });
@@ -102,7 +103,7 @@ export class LearnDashService implements ILearnDashClient {
   async getAssignmentSubmission(userId: number, lessonId: number): Promise<AssignmentSubmissionResponse | null> {
     const headers = await this.getAuthHeaders();
     // Retrieve assignments matching student and lesson
-    const url = `${CONFIG.LEARNDASH.BASE_URL}/wp-json/ldlms/v2/sfwd-assignment?user=${userId}&post=${lessonId}`;
+    const url = `${this.baseUrl}/wp-json/ldlms/v2/sfwd-assignment?user=${userId}&post=${lessonId}`;
 
     try {
       const response = await fetch(url, { headers });
@@ -124,7 +125,7 @@ export class LearnDashService implements ILearnDashClient {
 
   async submitGradeAndComment(assignmentId: number, score: number, comment: string): Promise<void> {
     const headers = await this.getAuthHeaders();
-    const url = `${CONFIG.LEARNDASH.BASE_URL}/wp-json/ldlms/v2/sfwd-assignment/${assignmentId}`;
+    const url = `${this.baseUrl}/wp-json/ldlms/v2/sfwd-assignment/${assignmentId}`;
 
     try {
       const response = await fetch(url, {
@@ -151,7 +152,7 @@ export class LearnDashService implements ILearnDashClient {
   async verifyUserId(userId: number): Promise<{ exists: boolean; error?: string }> {
     try {
       const headers = await this.getAuthHeaders();
-      const url = `${CONFIG.LEARNDASH.BASE_URL}/wp-json/wp/v2/users/${userId}`;
+      const url = `${this.baseUrl}/wp-json/wp/v2/users/${userId}`;
 
       const response = await fetch(url, { headers });
       if (response.status === 200) {
@@ -272,7 +273,7 @@ export class LearnDashService implements ILearnDashClient {
   async syncAllWithLearnDash(): Promise<CachedCourse[]> {
     try {
       const token = await this.authenticate();
-      const coursesUrl = `${CONFIG.LEARNDASH.BASE_URL}/wp-json/ldlms/v2/sfwd-courses`;
+      const coursesUrl = `${this.baseUrl}/wp-json/ldlms/v2/sfwd-courses`;
       const coursesRaw = await this.fetchAllWordPressPages(coursesUrl, token);
       
       await logAudit('INFO', 'LEARNDASH_SYNC_START', `Starting cache sync for ${coursesRaw.length} courses in parallel.`);
@@ -284,7 +285,7 @@ export class LearnDashService implements ILearnDashClient {
           const courseLearndashHyperlink = course.link || '';
           const category = this.categorizeCourse(courseName);
           
-          const lessonsUrl = `${CONFIG.LEARNDASH.BASE_URL}/wp-json/ldlms/v2/sfwd-lessons?course=${courseId}`;
+          const lessonsUrl = `${this.baseUrl}/wp-json/ldlms/v2/sfwd-lessons?course=${courseId}`;
           let lessonsRaw: any[] = [];
           try {
             lessonsRaw = await this.fetchAllWordPressPages(lessonsUrl, token);
