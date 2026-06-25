@@ -335,6 +335,12 @@ export class WhatsAppService implements IWhatsAppClient {
     }
   }
 
+  getBotJid(): string | null {
+    if (!this.sock || !this.sock.user) return null;
+    const id = this.sock.user.id;
+    return id.includes(':') ? id.split(':')[0] + '@s.whatsapp.net' : id;
+  }
+
   private getDocumentMessage(message: proto.IMessage | null | undefined): proto.IMessage['documentMessage'] | null | undefined {
     if (!message) return null;
     if (message.documentMessage) return message.documentMessage;

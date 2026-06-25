@@ -22,6 +22,7 @@ export interface CachedCourse {
 
 export class LearnDashService implements ILearnDashClient {
   private jwtToken: string | null = null;
+  private useBasicAuth = false;
 
   async authenticate(): Promise<string> {
     const url = `${CONFIG.LEARNDASH.BASE_URL}/wp-json/jwt-auth/v1/token`;
@@ -45,19 +46,33 @@ export class LearnDashService implements ILearnDashClient {
 
       const data = (await response.json()) as { token: string };
       this.jwtToken = data.token;
+      this.useBasicAuth = false;
       
       await logAudit('INFO', 'LEARNDASH_AUTH', 'Successfully authenticated with LearnDash REST API and retrieved JWT token.');
       return this.jwtToken;
     } catch (err: any) {
-      await logAudit('ERROR', 'LEARNDASH_AUTH', `Authentication failed: ${err.message}`);
-      throw err;
+      await logAudit('WARN', 'LEARNDASH_AUTH_FALLBACK_BASIC', `JWT authentication failed (${err.message}). Falling back to Basic Authentication.`);
+      this.useBasicAuth = true;
+      this.jwtToken = 'BASIC_AUTH_FALLBACK';
+      return this.jwtToken;
     }
   }
 
   private async getAuthHeaders(): Promise<HeadersInit> {
+    if (this.useBasicAuth) {
+      const credentials = Buffer.from(`${CONFIG.LEARNDASH.JWT_USERNAME}:${CONFIG.LEARNDASH.JWT_PASSWORD}`).toString('base64');
+      return {
+        'Authorization': `Basic ${credentials}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      };
+    }
+
     if (!this.jwtToken) {
       await this.authenticate();
+      return this.getAuthHeaders();
     }
+
     return {
       'Authorization': `Bearer ${this.jwtToken}`,
       'Content-Type': 'application/json',
@@ -215,12 +230,18 @@ export class LearnDashService implements ILearnDashClient {
       const separator = baseUrl.includes('?') ? '&' : '?';
       const url = `${baseUrl}${separator}per_page=100&page=${page}`;
 
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json'
+      };
+
+      if (this.useBasicAuth) {
+        const credentials = Buffer.from(`${CONFIG.LEARNDASH.JWT_USERNAME}:${CONFIG.LEARNDASH.JWT_PASSWORD}`).toString('base64');
+        headers['Authorization'] = `Basic ${credentials}`;
+      } else {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(url, { headers });
 
       if (!response.ok) {
         if (page === 1) {

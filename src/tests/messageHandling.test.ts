@@ -71,6 +71,7 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
       getGroups: vi.fn().mockResolvedValue([]),
       addParticipants: vi.fn().mockResolvedValue(undefined),
       getGroupInviteCode: vi.fn().mockResolvedValue('inviteCode'),
+      getBotJid: vi.fn().mockReturnValue('60122082435@s.whatsapp.net'),
     };
 
     learndashMock = {
@@ -575,6 +576,36 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
 
       expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
         'group-123@g.us',
+        expect.stringContaining('Teacher Command Guide')
+      );
+    });
+
+    it('should automatically register bot phone number as a teacher and allow /help command without workshop context', async () => {
+      dbMock.workshop.findFirst.mockResolvedValue(null);
+      whatsappMock.getBotJid.mockReturnValue('60122082435@s.whatsapp.net');
+      dbMock.teacher.findUnique.mockResolvedValue(null);
+      const createdTeacher = { id: 'teacher-123', name: 'Teacher (Bot)', phoneNumber: '60122082435@s.whatsapp.net' };
+      dbMock.teacher.create.mockResolvedValue(createdTeacher);
+      dbMock.teacher.findFirst.mockResolvedValue(createdTeacher);
+
+      const msg: IncomingMessage = {
+        senderJid: '60122082435@s.whatsapp.net',
+        chatJid: '60122082435@s.whatsapp.net',
+        text: '/help',
+        isGroup: false,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(dbMock.teacher.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          phoneNumber: '60122082435@s.whatsapp.net',
+        })
+      }));
+
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        '60122082435@s.whatsapp.net',
         expect.stringContaining('Teacher Command Guide')
       );
     });

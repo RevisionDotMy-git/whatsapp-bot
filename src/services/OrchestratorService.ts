@@ -157,6 +157,26 @@ export class OrchestratorService {
       msg.senderJid
     );
 
+    // Auto-register the bot's own number as a Teacher in the DB if it is the sender
+    const botJid = this.whatsapp.getBotJid();
+    if (botJid) {
+      const isBotSender = msg.senderJid === botJid || (msg.senderPn && msg.senderPn === botJid);
+      if (isBotSender) {
+        const existingTeacher = await this.db.teacher.findUnique({
+          where: { phoneNumber: botJid },
+        });
+        if (!existingTeacher) {
+          await this.db.teacher.create({
+            data: {
+              name: 'Teacher (Bot)',
+              phoneNumber: botJid,
+            },
+          });
+          await logAudit('INFO', 'TEACHER_AUTO_REGISTER', `Automatically registered bot JID ${botJid} as a Teacher in the database.`, botJid);
+        }
+      }
+    }
+
     // Intercept student profile completion replies in DM
     if (!msg.isGroup && msg.text) {
       const searchSenderJids = [msg.senderJid];
@@ -587,29 +607,49 @@ export class OrchestratorService {
       }
     }
 
-    if (!workshop) return; // No active workshop matched for this conversation JID JID
+    // Determine global roles based on database records
+    const checkJids = [msg.senderJid];
+    if (msg.senderPn) {
+      checkJids.push(msg.senderPn);
+    }
+    const isGlobalTeacher = await this.db.teacher.findFirst({
+      where: { phoneNumber: { in: checkJids } }
+    });
+    const isGlobalStudent = await this.db.student.findFirst({
+      where: { phoneNumber: { in: checkJids } }
+    });
 
-    // Prepare list of student phone numbers in the workshop
-    const studentJids = workshop.students.map(s => s.student.phoneNumber);
-    const teacherJid = workshop.teacher.phoneNumber;
+    // Prepare list of student phone numbers in the workshop and teacher JID
+    const studentJids = workshop ? workshop.students.map(s => s.student.phoneNumber) : [];
+    const teacherJid = workshop ? workshop.teacher.phoneNumber : (isGlobalTeacher ? isGlobalTeacher.phoneNumber : '');
 
     // Determine the normalized sender JID to match database records
     let resolvedSenderJid = msg.senderJid;
-    const isTeacherSenderJid = msg.senderJid === teacherJid || (msg.senderPn && msg.senderPn === teacherJid);
-    if (isTeacherSenderJid) {
-      resolvedSenderJid = teacherJid;
-    } else {
-      const matchedStudent = workshop.students.find(
-        s => s.student.phoneNumber === msg.senderJid || (msg.senderPn && s.student.phoneNumber === msg.senderPn)
-      );
-      if (matchedStudent) {
-        resolvedSenderJid = matchedStudent.student.phoneNumber;
+    if (isGlobalTeacher) {
+      resolvedSenderJid = isGlobalTeacher.phoneNumber;
+    } else if (isGlobalStudent) {
+      resolvedSenderJid = isGlobalStudent.phoneNumber;
+    } else if (workshop) {
+      const isTeacherSenderJid = msg.senderJid === teacherJid || (msg.senderPn && msg.senderPn === teacherJid);
+      if (isTeacherSenderJid) {
+        resolvedSenderJid = teacherJid;
+      } else {
+        const matchedStudent = workshop.students.find(
+          s => s.student.phoneNumber === msg.senderJid || (msg.senderPn && s.student.phoneNumber === msg.senderPn)
+        );
+        if (matchedStudent) {
+          resolvedSenderJid = matchedStudent.student.phoneNumber;
+        }
       }
     }
 
     // 2. Parse command
     const parsed = parseCommand(msg.text, resolvedSenderJid, teacherJid, studentJids);
-    if (!parsed) return; // Not a valid command
+    if (!parsed) {
+      // Non-command messages require workshop context to proceed to natural language parsing or custom homework
+      if (!workshop) return;
+      return; 
+    }
 
     // 3. Authorization check
     if (!parsed.isAuthorized) {
@@ -636,6 +676,10 @@ export class OrchestratorService {
         break;
 
       case 'homework':
+        if (!workshop) {
+          await this.whatsapp.sendMessage(msg.chatJid, '❌ This command requires a workshop context.');
+          return;
+        }
         if (parsed.role === 'teacher') {
           await this.handleTeacherHomework(workshop.id, parsed.lessonId, parsed.dueDate!, msg.chatJid);
         } else if (parsed.role === 'student') {
@@ -651,6 +695,10 @@ export class OrchestratorService {
 
       case 'meeting':
       case 'link':
+        if (!workshop) {
+          await this.whatsapp.sendMessage(msg.chatJid, '❌ This command requires a workshop context.');
+          return;
+        }
         const meetLink = workshop.meetingLink || 'No class link is configured yet.';
         await this.whatsapp.sendMessage(
           msg.chatJid,
@@ -659,10 +707,18 @@ export class OrchestratorService {
         break;
 
       case 'report':
-        await this.handleTeacherReportRequest(workshop.id, teacherJid);
+        if (!workshop) {
+          await this.whatsapp.sendMessage(msg.chatJid, '❌ This command requires a workshop context.');
+          return;
+        }
+        await this.handleTeacherReportRequest(workshop.id, teacherJid!);
         break;
 
       case 'students':
+        if (!workshop) {
+          await this.whatsapp.sendMessage(msg.chatJid, '❌ This command requires a workshop context.');
+          return;
+        }
         const studentsList = workshop.students
           .map((s, idx) => `${idx + 1}. ${s.student.name} (${s.student.phoneNumber.split('@')[0]})`)
           .join('\n');
@@ -673,9 +729,13 @@ export class OrchestratorService {
         break;
 
       case 'check':
+        if (!workshop) {
+          await this.whatsapp.sendMessage(msg.chatJid, '❌ This command requires a workshop context.');
+          return;
+        }
         // Parse student name search from argument
         const searchName = msg.text.substring(msg.text.indexOf('check') + 5).trim();
-        await this.handleTeacherStudentCheck(workshop.id, searchName, teacherJid);
+        await this.handleTeacherStudentCheck(workshop.id, searchName, teacherJid!);
         break;
 
       case 'groups':

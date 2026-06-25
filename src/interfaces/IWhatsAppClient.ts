@@ -82,4 +82,9 @@ export interface IWhatsAppClient {
    * Registers a callback for when connection transitions to open state
    */
   onConnectionOpen(callback: () => Promise<void> | void): void;
+
+  /**
+   * Returns the bot's own WhatsApp JID (normalized) or null if not connected
+   */
+  getBotJid(): string | null;
 }
