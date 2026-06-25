@@ -181,6 +181,7 @@ export class WhatsAppService implements IWhatsAppClient {
             isGroup,
             timestamp: typeof msg.messageTimestamp === 'number' ? msg.messageTimestamp : Number(msg.messageTimestamp),
             document: documentAttachment,
+            senderPn: (msg.key as any).senderPn || undefined,
           };
 
           // Trigger registered callbacks

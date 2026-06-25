@@ -442,5 +442,65 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
     fsExistsSpy.mockRestore();
     fsReadSpy.mockRestore();
   });
+
+  it('should resolve student workshop and authorize command when student JID is an LID and DB JID is a phone number', async () => {
+    const mockStudent = {
+      id: 'student-789',
+      name: 'form5-Lynxx',
+      phoneNumber: '60123456789@s.whatsapp.net', // Saved as PN in database
+      learndashId: 248030116,
+    };
+
+    const mockWorkshop = {
+      id: 'workshop-123',
+      subject: 'SPM Physics',
+      teacher: { phoneNumber: '60122082435@s.whatsapp.net' },
+      students: [
+        { student: mockStudent }
+      ],
+      homeworks: [
+        { id: 'homework-01', title: 'Lesson 1 Homework', dueDate: new Date(Date.now() + 100000) }
+      ],
+    };
+
+    // Mock student workshop findFirst lookup
+    dbMock.studentWorkshop.findFirst.mockResolvedValue({
+      studentId: mockStudent.id,
+      workshopId: mockWorkshop.id,
+      workshop: mockWorkshop,
+    });
+
+    dbMock.homework.findMany = vi.fn().mockResolvedValue(mockWorkshop.homeworks);
+
+    const lidMessage: IncomingMessage = {
+      senderJid: '248030116757531@lid',      // Message arrives with LID JID
+      senderPn: '60123456789@s.whatsapp.net', // And has senderPn in message key
+      chatJid: '248030116757531@lid',
+      text: '/homework',
+      isGroup: false,
+      timestamp: 1718540000,
+    };
+
+    await (orchestrator as any).handleMessage(lidMessage);
+
+    // Verify DB was queried using both the LID and the PN JID
+    expect(dbMock.studentWorkshop.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          student: expect.objectContaining({
+            phoneNumber: expect.objectContaining({
+              in: ['248030116757531@lid', '60123456789@s.whatsapp.net'],
+            }),
+          }),
+        }),
+      })
+    );
+
+    // Should successfully authorize the student to check homework and reply with the list
+    expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+      '248030116757531@lid',
+      expect.stringContaining('Lesson 1 Homework')
+    );
+  });
 });
 

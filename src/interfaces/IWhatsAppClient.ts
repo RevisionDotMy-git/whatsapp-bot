@@ -14,6 +14,7 @@ export interface IncomingMessage {
   isGroup: boolean;  // True if sent in a group chat
   timestamp: number; // Unix timestamp
   document?: DocumentAttachment; // Optional document attachment
+  senderPn?: string; // Optional real phone number JID if senderJid is an LID (e.g. "@s.whatsapp.net")
 }
 
 export interface IWhatsAppClient {

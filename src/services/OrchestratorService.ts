@@ -161,8 +161,12 @@ export class OrchestratorService {
                     msg.document.mimetype === 'text/comma-separated-values' || 
                     msg.document.fileName.endsWith('.csv');
       if (isCsv) {
-        const teacher = await this.db.teacher.findUnique({
-          where: { phoneNumber: msg.senderJid },
+        const searchTeacherJids = [msg.senderJid];
+        if (msg.senderPn) {
+          searchTeacherJids.push(msg.senderPn);
+        }
+        const teacher = await this.db.teacher.findFirst({
+          where: { phoneNumber: { in: searchTeacherJids } },
         });
         if (teacher) {
           await this.handleCsvImport(msg, teacher);
@@ -174,9 +178,16 @@ export class OrchestratorService {
       }
     }
 
+    const searchSenderJids = [msg.senderJid];
+    if (msg.senderPn) {
+      searchSenderJids.push(msg.senderPn);
+    }
+
     // 1. Resolve Workshop based on Group JID or Teacher JID
     let workshop = await this.db.workshop.findFirst({
-      where: msg.isGroup ? { whatsappJid: msg.chatJid } : { teacher: { phoneNumber: msg.senderJid } },
+      where: msg.isGroup 
+        ? { whatsappJid: msg.chatJid } 
+        : { teacher: { phoneNumber: { in: searchSenderJids } } },
       include: {
         teacher: true,
         students: { include: { student: true } },
@@ -197,7 +208,11 @@ export class OrchestratorService {
       } else {
         // If student is DM-ing, find their enrolled workshop
         const studentEnrollment = await this.db.studentWorkshop.findFirst({
-          where: { student: { phoneNumber: msg.senderJid } },
+          where: {
+            student: {
+              phoneNumber: { in: searchSenderJids },
+            },
+          },
           include: { workshop: { include: { teacher: true, students: { include: { student: true } } } } },
         });
         if (studentEnrollment) {
@@ -233,7 +248,8 @@ export class OrchestratorService {
     }
 
     // Check for natural language LearnDash homework assignment from Teacher
-    if (workshop && msg.text && workshop.teacher.phoneNumber === msg.senderJid) {
+    const isTeacherSender = workshop && (msg.senderJid === workshop.teacher.phoneNumber || (msg.senderPn && msg.senderPn === workshop.teacher.phoneNumber));
+    if (workshop && msg.text && isTeacherSender) {
       const matchedLessons = resolveLessonsFromText(msg.text, 'data/learndash_cache.json');
       if (matchedLessons.length > 0) {
         // Calculate due date once for the entire message
@@ -462,10 +478,12 @@ export class OrchestratorService {
 
     // Self-healing enrollment: if group message from someone in the group but not in DB
     if (msg.isGroup && workshop) {
-      const isEnrolled = workshop.students.some(s => s.student.phoneNumber === msg.senderJid);
-      const isTeacher = workshop.teacher.phoneNumber === msg.senderJid;
+      const isEnrolled = workshop.students.some(
+        s => s.student.phoneNumber === msg.senderJid || (msg.senderPn && s.student.phoneNumber === msg.senderPn)
+      );
+      const isTeacher = workshop.teacher.phoneNumber === msg.senderJid || (msg.senderPn && workshop.teacher.phoneNumber === msg.senderPn);
       if (!isEnrolled && !isTeacher) {
-        await this.enrollParticipantInDb(workshop.id, msg.senderJid);
+        await this.enrollParticipantInDb(workshop.id, msg.senderPn || msg.senderJid);
         // Refresh workshop with new student enrolled so command parsing role checks work!
         const refreshedWorkshop = await this.db.workshop.findFirst({
           where: { id: workshop.id },
@@ -486,8 +504,22 @@ export class OrchestratorService {
     const studentJids = workshop.students.map(s => s.student.phoneNumber);
     const teacherJid = workshop.teacher.phoneNumber;
 
+    // Determine the normalized sender JID to match database records
+    let resolvedSenderJid = msg.senderJid;
+    const isTeacherSenderJid = msg.senderJid === teacherJid || (msg.senderPn && msg.senderPn === teacherJid);
+    if (isTeacherSenderJid) {
+      resolvedSenderJid = teacherJid;
+    } else {
+      const matchedStudent = workshop.students.find(
+        s => s.student.phoneNumber === msg.senderJid || (msg.senderPn && s.student.phoneNumber === msg.senderPn)
+      );
+      if (matchedStudent) {
+        resolvedSenderJid = matchedStudent.student.phoneNumber;
+      }
+    }
+
     // 2. Parse command
-    const parsed = parseCommand(msg.text, msg.senderJid, teacherJid, studentJids);
+    const parsed = parseCommand(msg.text, resolvedSenderJid, teacherJid, studentJids);
     if (!parsed) return; // Not a valid command
 
     // 3. Authorization check
