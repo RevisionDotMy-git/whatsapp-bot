@@ -621,6 +621,9 @@ export class OrchestratorService {
 
     // Prepare list of student phone numbers in the workshop and teacher JID
     const studentJids = workshop ? workshop.students.map(s => s.student.phoneNumber) : [];
+    if (isGlobalStudent && !studentJids.includes(isGlobalStudent.phoneNumber)) {
+      studentJids.push(isGlobalStudent.phoneNumber);
+    }
     const teacherJid = workshop ? workshop.teacher.phoneNumber : (isGlobalTeacher ? isGlobalTeacher.phoneNumber : '');
 
     // Determine the normalized sender JID to match database records

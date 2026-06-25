@@ -21,61 +21,20 @@ export interface CachedCourse {
 }
 
 export class LearnDashService implements ILearnDashClient {
-  private jwtToken: string | null = null;
-  private useBasicAuth = false;
+  private jwtToken: string | null = 'BASIC_AUTH_ONLY';
+  private useBasicAuth = true;
   private baseUrl = CONFIG.LEARNDASH.BASE_URL.replace(/\/+$/, '');
-
+ 
   async authenticate(): Promise<string> {
-    const url = `${this.baseUrl}/wp-json/jwt-auth/v1/token`;
-    
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        body: JSON.stringify({
-          username: CONFIG.LEARNDASH.JWT_USERNAME,
-          password: CONFIG.LEARNDASH.JWT_PASSWORD,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Auth failed with status ${response.status}`);
-      }
-
-      const data = (await response.json()) as { token: string };
-      this.jwtToken = data.token;
-      this.useBasicAuth = false;
-      
-      await logAudit('INFO', 'LEARNDASH_AUTH', 'Successfully authenticated with LearnDash REST API and retrieved JWT token.');
-      return this.jwtToken;
-    } catch (err: any) {
-      await logAudit('WARN', 'LEARNDASH_AUTH_FALLBACK_BASIC', `JWT authentication failed (${err.message}). Falling back to Basic Authentication.`);
-      this.useBasicAuth = true;
-      this.jwtToken = 'BASIC_AUTH_FALLBACK';
-      return this.jwtToken;
-    }
+    this.useBasicAuth = true;
+    this.jwtToken = 'BASIC_AUTH_ONLY';
+    return this.jwtToken;
   }
-
+ 
   private async getAuthHeaders(): Promise<HeadersInit> {
-    if (this.useBasicAuth) {
-      const credentials = Buffer.from(`${CONFIG.LEARNDASH.JWT_USERNAME}:${CONFIG.LEARNDASH.JWT_PASSWORD}`).toString('base64');
-      return {
-        'Authorization': `Basic ${credentials}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      };
-    }
-
-    if (!this.jwtToken) {
-      await this.authenticate();
-      return this.getAuthHeaders();
-    }
-
+    const credentials = Buffer.from(`${CONFIG.LEARNDASH.JWT_USERNAME}:${CONFIG.LEARNDASH.JWT_PASSWORD}`).toString('base64');
     return {
-      'Authorization': `Bearer ${this.jwtToken}`,
+      'Authorization': `Basic ${credentials}`,
       'Content-Type': 'application/json',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     };

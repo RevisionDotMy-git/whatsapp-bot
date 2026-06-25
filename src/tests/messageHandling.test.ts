@@ -634,6 +634,34 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
       );
     });
 
+    it('should reply with student help instructions even if no workshop context can be resolved', async () => {
+      dbMock.workshop.findFirst.mockResolvedValue(null);
+      dbMock.studentWorkshop.findFirst.mockResolvedValue(null);
+
+      const student = {
+        id: 'student-111',
+        name: 'John Doe',
+        phoneNumber: studentJid,
+        learndashId: 1001,
+      };
+      dbMock.student.findFirst = vi.fn().mockResolvedValue(student);
+
+      const msg: IncomingMessage = {
+        senderJid: studentJid,
+        chatJid: studentJid,
+        text: '/help',
+        isGroup: false,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        studentJid,
+        expect.stringContaining('Student Command Guide')
+      );
+    });
+
     it('should execute /invite student <phone> <name> correctly, create a student record with placeholder negative id, and send onboarding welcome message', async () => {
       dbMock.workshop.findFirst.mockResolvedValue(mockWorkshop);
       dbMock.student.findUnique = vi.fn().mockResolvedValue(null);
