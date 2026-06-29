@@ -642,6 +642,181 @@ server.get('/api/audit-logs', async (request, reply) => {
   }
 });
 
+/**
+ * Endpoint to delete a Workshop class
+ */
+server.delete('/api/workshops/:id', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  try {
+    const workshop = await prisma.workshop.findUnique({ where: { id } });
+    if (!workshop) {
+      return reply.status(404).send({ error: 'Workshop not found.' });
+    }
+    await prisma.workshop.delete({ where: { id } });
+    await logAudit('INFO', 'API_WORKSHOP_DELETE', `Workshop "${workshop.subject}" (ID: ${id}) deleted via API.`);
+    return reply.status(200).send({ message: 'Workshop deleted successfully.' });
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.status(500).send({ error: `Failed to delete workshop: ${err.message}` });
+  }
+});
+
+/**
+ * Endpoint to delete a Homework assignment by lesson ID
+ */
+server.delete('/api/workshops/:id/homeworks/:lessonId', async (request, reply) => {
+  const { id: workshopId, lessonId: rawLessonId } = request.params as { id: string; lessonId: string };
+  try {
+    const lessonId = parseInt(rawLessonId, 10);
+    if (isNaN(lessonId)) {
+      return reply.status(400).send({ error: 'Invalid lesson ID.' });
+    }
+    const homework = await prisma.homework.findFirst({
+      where: { workshopId, lessonId }
+    });
+    if (!homework) {
+      return reply.status(404).send({ error: 'Homework not found.' });
+    }
+    await prisma.homework.delete({ where: { id: homework.id } });
+    await logAudit('INFO', 'API_HOMEWORK_DELETE', `Homework for lesson ${lessonId} deleted from workshop ${workshopId} via API.`);
+    return reply.status(200).send({ message: 'Homework deleted successfully.' });
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.status(500).send({ error: `Failed to delete homework: ${err.message}` });
+  }
+});
+
+/**
+ * Endpoint to invite a new teacher or student
+ */
+server.post('/api/invite', async (request, reply) => {
+  const body = request.body as { role: 'student' | 'teacher'; phoneNumber: string; name: string };
+  try {
+    const targetJid = body.phoneNumber.includes('@') ? body.phoneNumber : `${body.phoneNumber.replace(/\D/g, '')}@s.whatsapp.net`;
+    
+    if (body.role === 'student') {
+      const isTeacher = await prisma.teacher.findUnique({ where: { phoneNumber: targetJid } });
+      if (isTeacher) {
+        return reply.status(400).send({ error: 'JID is already registered as a Teacher.' });
+      }
+      
+      let student = await prisma.student.findUnique({ where: { phoneNumber: targetJid } });
+      if (student) {
+        return reply.status(400).send({ error: 'Student is already registered.' });
+      }
+      
+      const placeholderId = -Math.floor(Date.now() / 1000);
+      student = await prisma.student.create({
+        data: { name: body.name, phoneNumber: targetJid, learndashId: placeholderId }
+      });
+      
+      await whatsapp.sendMessage(
+        targetJid,
+        `👋 Hello *${body.name}*!\n\n` +
+        `Welcome to the Revision Workshop! I am the automated class assistant bot.\n\n` +
+        `Please reply directly to this message with your *WordPress/LearnDash User ID* (numbers only) to link your account.`
+      );
+      
+      await logAudit('INFO', 'API_INVITE_STUDENT', `Invited student ${body.name} (${targetJid}) via API.`);
+      return reply.status(201).send({ message: 'Student invited successfully.', student });
+    } else {
+      const isStudent = await prisma.student.findUnique({ where: { phoneNumber: targetJid } });
+      if (isStudent) {
+        return reply.status(400).send({ error: 'JID is already registered as a Student.' });
+      }
+      
+      const teacher = await prisma.teacher.upsert({
+        where: { phoneNumber: targetJid },
+        create: { name: body.name, phoneNumber: targetJid },
+        update: { name: body.name }
+      });
+      
+      await logAudit('INFO', 'API_INVITE_TEACHER', `Invited teacher ${body.name} (${targetJid}) via API.`);
+      return reply.status(201).send({ message: 'Teacher invited successfully.', teacher });
+    }
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.status(500).send({ error: `Failed to invite user: ${err.message}` });
+  }
+});
+
+/**
+ * Endpoint to remove a teacher or student globally or from a specific class
+ */
+server.post('/api/remove', async (request, reply) => {
+  const body = request.body as { role: 'student' | 'teacher'; phoneNumber: string; subject?: string };
+  try {
+    const targetJid = body.phoneNumber.includes('@') ? body.phoneNumber : `${body.phoneNumber.replace(/\D/g, '')}@s.whatsapp.net`;
+    
+    if (body.role === 'teacher') {
+      const teacher = await prisma.teacher.findUnique({
+        where: { phoneNumber: targetJid },
+        include: { workshops: true }
+      });
+      if (!teacher) {
+        return reply.status(404).send({ error: 'Teacher not found.' });
+      }
+      if (teacher.workshops.length > 0) {
+        return reply.status(400).send({ error: `Cannot delete teacher. They are assigned to active classes: ${teacher.workshops.map(w => w.subject).join(', ')}` });
+      }
+      await prisma.teacher.delete({ where: { id: teacher.id } });
+      await logAudit('INFO', 'API_REMOVE_TEACHER', `Removed teacher ${teacher.name} globally via API.`);
+      return reply.status(200).send({ message: 'Teacher removed globally.' });
+    } else {
+      const student = await prisma.student.findUnique({
+        where: { phoneNumber: targetJid },
+        include: { enrollments: { include: { workshop: true } } }
+      });
+      if (!student) {
+        return reply.status(404).send({ error: 'Student not found.' });
+      }
+      
+      if (body.subject) {
+        const enrollment = student.enrollments.find(e => e.workshop.subject.toLowerCase() === body.subject!.toLowerCase());
+        if (!enrollment) {
+          return reply.status(400).send({ error: `Student is not enrolled in class: ${body.subject}` });
+        }
+        await prisma.studentWorkshop.delete({
+          where: {
+            studentId_workshopId: {
+              studentId: student.id,
+              workshopId: enrollment.workshopId
+            }
+          }
+        });
+        await logAudit('INFO', 'API_REMOVE_STUDENT_CLASS', `Unenrolled student ${student.name} from class ${body.subject} via API.`);
+        return reply.status(200).send({ message: `Student unenrolled from class ${body.subject}.` });
+      } else {
+        await prisma.student.delete({ where: { id: student.id } });
+        await logAudit('INFO', 'API_REMOVE_STUDENT_GLOBAL', `Removed student ${student.name} globally via API.`);
+        return reply.status(200).send({ message: 'Student removed globally.' });
+      }
+    }
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.status(500).send({ error: `Failed to remove user: ${err.message}` });
+  }
+});
+
+/**
+ * Endpoint to send a custom WhatsApp message/announcement
+ */
+server.post('/api/send-message', async (request, reply) => {
+  const body = request.body as { jid: string; text: string };
+  try {
+    if (!body.jid || !body.text) {
+      return reply.status(400).send({ error: 'JID and text are required.' });
+    }
+    const targetJid = body.jid.includes('@') ? body.jid : `${body.jid.replace(/\D/g, '')}@s.whatsapp.net`;
+    await whatsapp.sendMessage(targetJid, body.text);
+    await logAudit('INFO', 'API_SEND_MESSAGE', `Sent message to ${targetJid} via API.`);
+    return reply.status(200).send({ message: 'Message sent successfully.' });
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.status(500).send({ error: `Failed to send message: ${err.message}` });
+  }
+});
+
 // Start services and listen
 async function main() {
   // Connect to WhatsApp
