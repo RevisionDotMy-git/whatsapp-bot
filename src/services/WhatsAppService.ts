@@ -339,7 +339,12 @@ export class WhatsAppService implements IWhatsAppClient {
   getBotJid(): string | null {
     if (!this.sock || !this.sock.user) return null;
     const id = this.sock.user.id;
-    return id.includes(':') ? id.split(':')[0] + '@s.whatsapp.net' : id;
+    if (id.includes(':')) {
+      const parts = id.split(':');
+      const suffix = id.includes('@lid') ? '@lid' : '@s.whatsapp.net';
+      return parts[0] + suffix;
+    }
+    return id;
   }
 
   async deleteMessage(jid: string, key: any): Promise<void> {
