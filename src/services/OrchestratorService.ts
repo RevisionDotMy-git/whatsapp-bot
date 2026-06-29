@@ -9,6 +9,8 @@ import { parseCsvString } from '../utils/csvParser.js';
 import { logAudit } from './db.js';
 import { CONFIG } from '../config/constants.js';
 import { resolveLessonsFromText } from '../utils/naturalLanguageParser.js';
+import { COMMANDS } from '../utils/commandRegistry.js';
+import fs from 'fs';
 
 interface ParsedDueDate {
   date: Date;
@@ -626,6 +628,18 @@ export class OrchestratorService {
     }
     const teacherJid = workshop ? workshop.teacher.phoneNumber : (isGlobalTeacher ? isGlobalTeacher.phoneNumber : '');
 
+    // Collect all valid teacher JIDs to authorize command parsing (including bot's own JID)
+    const teacherJids: string[] = [];
+    if (teacherJid) {
+      teacherJids.push(teacherJid);
+    }
+    if (isGlobalTeacher && !teacherJids.includes(isGlobalTeacher.phoneNumber)) {
+      teacherJids.push(isGlobalTeacher.phoneNumber);
+    }
+    if (botJid && !teacherJids.includes(botJid)) {
+      teacherJids.push(botJid);
+    }
+
     // Determine the normalized sender JID to match database records
     let resolvedSenderJid = msg.senderJid;
     if (isGlobalTeacher) {
@@ -647,7 +661,7 @@ export class OrchestratorService {
     }
 
     // 2. Parse command
-    const parsed = parseCommand(msg.text, resolvedSenderJid, teacherJid, studentJids);
+    const parsed = parseCommand(msg.text, resolvedSenderJid, teacherJids, studentJids);
     if (!parsed) {
       // Non-command messages require workshop context to proceed to natural language parsing or custom homework
       if (!workshop) return;
@@ -658,6 +672,21 @@ export class OrchestratorService {
     if (!parsed.isAuthorized) {
       await this.whatsapp.sendMessage(msg.chatJid, '⚠️ Unauthorized command.');
       return;
+    }
+
+    // 3b. Argument validation check from registry
+    if (!parsed.isValid) {
+      await this.whatsapp.sendMessage(msg.chatJid, `❌ ${parsed.validationError || 'Invalid command usage.'}`);
+      return;
+    }
+
+    // Delete teacher command messages in group chats to maintain student UI/UX
+    if (msg.isGroup && parsed.role === 'teacher' && msg.rawKey) {
+      try {
+        await this.whatsapp.deleteMessage(msg.chatJid, msg.rawKey);
+      } catch (err: any) {
+        await logAudit('WARN', 'WHATSAPP_DELETE_MSG_FAILED', `Failed to delete teacher command message: ${err.message}`, msg.chatJid);
+      }
     }
 
     // 4. Command Dispatcher
@@ -684,7 +713,12 @@ export class OrchestratorService {
           return;
         }
         if (parsed.role === 'teacher') {
-          await this.handleTeacherHomework(workshop.id, parsed.lessonId, parsed.dueDate!, msg.chatJid);
+          const isDelete = parsed.args[0] && parsed.args[0].toLowerCase() === 'delete';
+          if (isDelete) {
+            await this.handleTeacherHomeworkDelete(workshop.id, parsed.lessonId, msg.chatJid);
+          } else {
+            await this.handleTeacherHomework(workshop.id, parsed.lessonId, parsed.dueDate!, msg.chatJid, parsed.args.join(' '));
+          }
         } else if (parsed.role === 'student') {
           const textParts = msg.text.trim().split(/\s+/);
           const subCommand = (textParts[1] || '').toLowerCase();
@@ -697,24 +731,128 @@ export class OrchestratorService {
         break;
 
       case 'meeting':
-      case 'link':
-        if (!workshop) {
-          await this.whatsapp.sendMessage(msg.chatJid, '❌ This command requires a workshop context.');
-          return;
+        if (parsed.role === 'teacher' && parsed.args.length > 0) {
+          // Parse meeting arguments: [create] [<class_subject>] [<link>]
+          let argsToProcess = parsed.args;
+          if (argsToProcess[0]?.toLowerCase() === 'create') {
+            argsToProcess = argsToProcess.slice(1);
+          }
+
+          const linkIndex = argsToProcess.findIndex(arg => arg.startsWith('http://') || arg.startsWith('https://'));
+          let link: string | null = null;
+          let classSubject = '';
+
+          if (linkIndex !== -1) {
+            link = argsToProcess[linkIndex];
+            classSubject = argsToProcess.slice(0, linkIndex).join(' ').trim();
+          } else {
+            classSubject = argsToProcess.join(' ').trim();
+          }
+
+          let targetWorkshop = workshop;
+          if (classSubject) {
+            targetWorkshop = await this.db.workshop.findFirst({
+              where: { subject: { contains: classSubject, mode: 'insensitive' } },
+              include: { teacher: true, students: { include: { student: true } } }
+            });
+            if (!targetWorkshop) {
+              await this.whatsapp.sendMessage(msg.chatJid, `❌ Workshop with subject "${classSubject}" not found.`);
+              return;
+            }
+          }
+
+          if (!targetWorkshop) {
+            await this.whatsapp.sendMessage(
+              msg.chatJid,
+              '❌ In a private chat, please specify the class subject. Usage: `/meeting [create] <class_subject> [<link>]`'
+            );
+            return;
+          }
+
+          // If no link is provided, generate a Google Meet link
+          if (!link) {
+            const letters = 'abcdefghijklmnopqrstuvwxyz';
+            const randSegment = (len: number) => Array.from({ length: len }, () => letters[Math.floor(Math.random() * letters.length)]).join('');
+            link = `https://meet.google.com/${randSegment(3)}-${randSegment(4)}-${randSegment(3)}`;
+          }
+
+          // Update meeting link
+          await this.db.workshop.update({
+            where: { id: targetWorkshop.id },
+            data: { meetingLink: link }
+          });
+
+          await logAudit('INFO', 'UPDATE_MEETING_LINK', `Teacher updated meeting link for workshop ${targetWorkshop.subject} to ${link}`, msg.senderJid);
+          
+          await this.whatsapp.sendMessage(
+            msg.chatJid,
+            `✅ Meeting link updated for *${targetWorkshop.subject}*:\n${link}`
+          );
+
+          if (targetWorkshop.whatsappJid) {
+            await this.whatsapp.sendMessage(
+              targetWorkshop.whatsappJid,
+              `📅 *Class Meeting Link Update*:\nThe meeting link for *${targetWorkshop.subject}* has been updated to:\n${link}`
+            );
+          }
+        } else {
+          // Display the link
+          if (!workshop) {
+            await this.whatsapp.sendMessage(msg.chatJid, '❌ This command requires a workshop context.');
+            return;
+          }
+          const meetLink = workshop.meetingLink || 'No class link is configured yet.';
+          await this.whatsapp.sendMessage(
+            msg.chatJid,
+            `📅 *Revision Workshop Meet Link*:\n${meetLink}`
+          );
         }
-        const meetLink = workshop.meetingLink || 'No class link is configured yet.';
-        await this.whatsapp.sendMessage(
-          msg.chatJid,
-          `📅 *Revision Workshop Meet Link*:\n${meetLink}`
-        );
+        break;
+
+      case 'link':
+        if (parsed.role === 'student' && parsed.args.length > 0) {
+          const rawId = parsed.args[0];
+          const userId = parseInt(rawId, 10);
+          if (isNaN(userId) || userId <= 0) {
+            await this.whatsapp.sendMessage(msg.chatJid, '❌ LearnDash User ID must be a positive integer.');
+            return;
+          }
+          await this.handleDirectStudentLink(resolvedSenderJid, userId, msg.chatJid);
+        } else {
+          await this.whatsapp.sendMessage(
+            msg.chatJid,
+            `ℹ️ *How to link your WordPress/LearnDash User ID*:\n\n` +
+            `1. Log in to your account at *course.revision.my*\n` +
+            `2. Tap on "Profile" (under the menu or avatar).\n` +
+            `3. Locate your numeric *User ID* (displayed under your profile avatar/name, or visible in your browser profile URL).\n` +
+            `4. Send a Direct Message (DM) to this bot containing only your numeric ID (e.g. *12345*), or run \`/link <id>\` in chat.\n\n` +
+            `*Note*: If you cannot find your ID, please contact your teacher to link it for you using \`/profile <phone> id <id>\`.`
+          );
+        }
+        break;
+
+      case 'unlink':
+        if (parsed.role === 'teacher') {
+          if (parsed.args.length === 0) {
+            await this.whatsapp.sendMessage(msg.chatJid, '❌ Please specify the student phone number to unlink. Usage: `/unlink <phone>`');
+            return;
+          }
+          await this.handleTeacherUnlink(parsed.args[0], msg.chatJid);
+        } else if (parsed.role === 'student') {
+          await this.handleStudentUnlink(resolvedSenderJid, msg.chatJid);
+        }
+        break;
+
+      case 'remove':
+        await this.handleTeacherRemove(msg, msg.chatJid);
+        break;
+
+      case 'class':
+        await this.handleTeacherClassCRUD(parsed.args, msg.chatJid);
         break;
 
       case 'report':
-        if (!workshop) {
-          await this.whatsapp.sendMessage(msg.chatJid, '❌ This command requires a workshop context.');
-          return;
-        }
-        await this.handleTeacherReportRequest(workshop.id, teacherJid!);
+        await this.handleTeacherReportAdvanced(parsed.args, msg.senderJid, msg.chatJid, workshop);
         break;
 
       case 'students':
@@ -946,16 +1084,131 @@ export class OrchestratorService {
     workshopId: string,
     lessonId: number | null,
     dueDate: Date,
-    chatJid: string
+    chatJid: string,
+    query?: string
   ): Promise<void> {
     if (!lessonId) {
-      await this.whatsapp.sendMessage(chatJid, '❌ Please specify a valid Lesson ID. Format: `/homework <lesson_id>`');
-      return;
+      if (!query || query.trim() === '') {
+        await this.whatsapp.sendMessage(chatJid, '❌ Please specify a valid Lesson ID or search keyword. Format: `/homework <lesson_id | query>`');
+        return;
+      }
+
+      // Read cache file
+      let cache: any[] = [];
+      try {
+        if (fs.existsSync('data/learndash_cache.json')) {
+          const cacheContent = fs.readFileSync('data/learndash_cache.json', 'utf-8');
+          const cacheObj = JSON.parse(cacheContent);
+          if (Array.isArray(cacheObj)) {
+            cache = cacheObj;
+          } else if (cacheObj && Array.isArray(cacheObj.courses)) {
+            cache = cacheObj.courses;
+          }
+        }
+      } catch (err) {
+        // Ignore cache read issues
+      }
+
+      const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+      const matches: { courseName: string; lessonId: number; lessonName: string }[] = [];
+
+      for (const course of cache) {
+        if (Array.isArray(course.lessons)) {
+          for (const lesson of course.lessons) {
+            const matchesAll = terms.every(term =>
+              course.courseName.toLowerCase().includes(term) ||
+              lesson.lessonName.toLowerCase().includes(term)
+            );
+            if (matchesAll) {
+              matches.push({
+                courseName: course.courseName,
+                lessonId: lesson.lessonId,
+                lessonName: lesson.lessonName
+              });
+            }
+          }
+        }
+      }
+
+      if (matches.length === 0) {
+        await this.whatsapp.sendMessage(chatJid, `❌ No lessons found matching "${query}".`);
+        return;
+      }
+
+      if (matches.length > 1) {
+        let msgText = `🔍 Multiple matching lessons found for "${query}". Please specify the Lesson ID:\n\n`;
+        const displayLimit = 10;
+        const displayMatches = matches.slice(0, displayLimit);
+        for (const match of displayMatches) {
+          msgText += `- *${match.courseName}* - ${match.lessonName} (ID: ${match.lessonId})\n`;
+        }
+        if (matches.length > displayLimit) {
+          msgText += `\n...and ${matches.length - displayLimit} more matches. Please refine your query.`;
+        }
+        await this.whatsapp.sendMessage(chatJid, msgText);
+        return;
+      }
+
+      // Exactly 1 match found
+      const match = matches[0];
+      lessonId = match.lessonId;
+      await this.whatsapp.sendMessage(chatJid, `🔍 Found 1 matching lesson: *${match.courseName} - ${match.lessonName}* (ID: ${match.lessonId}). Auto-assigning...`);
     }
 
-    // Upsert the homework
-    const title = `Lesson ${lessonId} Homework`;
-    const homework = await this.db.homework.create({
+    // Check if the lesson ID is in our local cache file, warning the user if not
+    let cacheValid = false;
+    let title = `Lesson ${lessonId} Homework`;
+
+    try {
+      if (fs.existsSync('data/learndash_cache.json')) {
+        const cacheContent = fs.readFileSync('data/learndash_cache.json', 'utf-8');
+        const cacheObj = JSON.parse(cacheContent);
+        const cache = Array.isArray(cacheObj) ? cacheObj : (cacheObj.courses || []);
+        
+        for (const course of cache) {
+          if (Array.isArray(course.lessons)) {
+            const lesson = course.lessons.find((l: any) => l.lessonId === lessonId);
+            if (lesson) {
+              cacheValid = true;
+              title = lesson.lessonName;
+              break;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      // Ignore cache check errors
+    }
+
+    if (!cacheValid) {
+      await this.whatsapp.sendMessage(
+        chatJid,
+        `⚠️ *Warning*: Lesson ID *${lessonId}* was not found in the WordPress cache. It has still been assigned, but progress tracking might not sync until the WordPress cache is updated.`
+      );
+    }
+
+    // Upsert the homework - check if already exists
+    let homework = await this.db.homework.findFirst({
+      where: {
+        workshopId,
+        lessonId
+      }
+    });
+
+    if (homework) {
+      await this.db.homework.update({
+        where: { id: homework.id },
+        data: { dueDate }
+      });
+
+      await logAudit('INFO', 'UPDATE_HOMEWORK_DUE', `Teacher updated due date for Lesson ID ${lessonId} to: ${dueDate.toDateString()}`);
+      await this.whatsapp.sendMessage(
+        chatJid,
+        `ℹ️ Homework for *${homework.title}* was already assigned to this class. Due date has been updated to: *${dueDate.toDateString()}*.`
+      );
+      return;
+    }
+    homework = await this.db.homework.create({
       data: {
         workshopId,
         lessonId,
@@ -993,7 +1246,7 @@ export class OrchestratorService {
       chatJid,
       `✅ *Homework Registered!*\n\n` +
       `📖 *Homework*: ${title}\n` +
-      `📅 *Due Date*: ${dueDate.toDateString()} (in 7 days)\n\n` +
+      `📅 *Due Date*: ${dueDate.toDateString()}\n\n` +
       `*Bot assistant is now tracking student progress on LearnDash.*`
     );
   }
@@ -1089,6 +1342,146 @@ export class OrchestratorService {
       replyJid,
       `✅ Marked homework *${updatedLog.homework.title}* as completed! Great job!`
     );
+  }
+
+  private async handleTeacherReportAdvanced(
+    args: string[],
+    senderJid: string,
+    chatJid: string,
+    currentWorkshop: any
+  ): Promise<void> {
+    // Identify if a phone number is specified in args
+    const phoneArgIndex = args.findIndex(arg => /^\d{8,15}$/.test(arg.replace(/[@s\.whatsapp\.net]/g, '')));
+    let phone: string | null = null;
+    let groupArgs = args;
+
+    if (phoneArgIndex !== -1) {
+      phone = args[phoneArgIndex];
+      if (!phone.includes('@')) {
+        phone = `${phone}@s.whatsapp.net`;
+      }
+      groupArgs = args.filter((_, idx) => idx !== phoneArgIndex);
+    }
+
+    const groupName = groupArgs.join(' ').trim();
+    const targetDmJid = senderJid;
+
+    // Case A: Both phone and group name specified
+    if (phone && groupName) {
+      const workshop = await this.db.workshop.findFirst({
+        where: { subject: { contains: groupName, mode: 'insensitive' } }
+      });
+      if (!workshop) {
+        await this.whatsapp.sendMessage(chatJid, `❌ Workshop with subject "${groupName}" not found.`);
+        return;
+      }
+      const student = await this.db.student.findUnique({
+        where: { phoneNumber: phone },
+        include: {
+          progress: {
+            where: { homework: { workshopId: workshop.id } },
+            include: { homework: true }
+          }
+        }
+      });
+      if (!student) {
+        await this.whatsapp.sendMessage(chatJid, `❌ Student with phone number "${phone.split('@')[0]}" not found.`);
+        return;
+      }
+
+      let details = '';
+      for (const p of student.progress) {
+        let statusIcon = '🔴';
+        if (p.status === ProgressStatus.COMPLETED) statusIcon = '🟢';
+        if (p.status === ProgressStatus.IN_PROGRESS) statusIcon = '🟡';
+        if (p.status === ProgressStatus.SKIPPED_EXERCISES) statusIcon = '🟠';
+        details += `- *${p.homework.title}*: ${statusIcon} ${p.status.replace('_', ' ')}\n`;
+      }
+
+      const reportText = `👤 *Student Progress Report: ${student.name}* 👤\n` +
+        `🏫 Class: *${workshop.subject}*\n` +
+        `📞 Phone: ${student.phoneNumber.split('@')[0]}\n` +
+        `🆔 LearnDash ID: ${student.learndashId}\n\n` +
+        `*Homework Progress:*\n${details || 'No homework assigned yet.'}`;
+
+      await this.whatsapp.sendMessage(targetDmJid, reportText);
+      await this.whatsapp.sendMessage(chatJid, `📩 I have sent the progress report for student *${student.name}* in *${workshop.subject}* to your private DM.`);
+      await logAudit('INFO', 'SEND_MANUAL_REPORT', `Sent student report for ${student.name} in workshop ${workshop.subject} to teacher.`, targetDmJid);
+      return;
+    }
+
+    // Case B: Only phone specified
+    if (phone && !groupName) {
+      const student = await this.db.student.findUnique({
+        where: { phoneNumber: phone },
+        include: {
+          progress: {
+            include: {
+              homework: {
+                include: { workshop: true }
+              }
+            }
+          }
+        }
+      });
+      if (!student) {
+        await this.whatsapp.sendMessage(chatJid, `❌ Student with phone number "${phone.split('@')[0]}" not found.`);
+        return;
+      }
+
+      let details = '';
+      for (const p of student.progress) {
+        let statusIcon = '🔴';
+        if (p.status === ProgressStatus.COMPLETED) statusIcon = '🟢';
+        if (p.status === ProgressStatus.IN_PROGRESS) statusIcon = '🟡';
+        if (p.status === ProgressStatus.SKIPPED_EXERCISES) statusIcon = '🟠';
+        details += `- *${p.homework.title}* (${p.homework.workshop.subject}): ${statusIcon} ${p.status.replace('_', ' ')}\n`;
+      }
+
+      const reportText = `👤 *Student Progress Report: ${student.name}* 👤\n` +
+        `📞 Phone: ${student.phoneNumber.split('@')[0]}\n` +
+        `🆔 LearnDash ID: ${student.learndashId}\n\n` +
+        `*Homework Progress:*\n${details || 'No homework assigned yet.'}`;
+
+      await this.whatsapp.sendMessage(targetDmJid, reportText);
+      await this.whatsapp.sendMessage(chatJid, `📩 I have sent the progress report for student *${student.name}* to your private DM.`);
+      await logAudit('INFO', 'SEND_MANUAL_REPORT', `Sent student report for ${student.name} to teacher.`, targetDmJid);
+      return;
+    }
+
+    // Case C: Only group name specified
+    if (!phone && groupName) {
+      const workshop = await this.db.workshop.findFirst({
+        where: { subject: { contains: groupName, mode: 'insensitive' } }
+      });
+      if (!workshop) {
+        await this.whatsapp.sendMessage(chatJid, `❌ Workshop with subject "${groupName}" not found.`);
+        return;
+      }
+
+      const reportText = await this.compileProgressReport(workshop.id);
+      await this.whatsapp.sendMessage(targetDmJid, reportText);
+      await this.whatsapp.sendMessage(chatJid, `📩 I have sent the progress report for workshop *${workshop.subject}* to your private DM.`);
+      await logAudit('INFO', 'SEND_MANUAL_REPORT', `Sent group report for workshop ${workshop.subject} to teacher.`, targetDmJid);
+      return;
+    }
+
+    // Case D: Neither phone nor group name specified
+    if (!phone && !groupName) {
+      if (!currentWorkshop) {
+        await this.whatsapp.sendMessage(
+          chatJid,
+          '❌ In a private chat, please specify the class subject or student phone number. Usage: `/report [<group_name>] [<phone_number>]`'
+        );
+        return;
+      }
+
+      const reportText = await this.compileProgressReport(currentWorkshop.id);
+      await this.whatsapp.sendMessage(targetDmJid, reportText);
+      await this.whatsapp.sendMessage(chatJid, `📩 I have sent the progress report for workshop *${currentWorkshop.subject}* to your private DM.`);
+      await logAudit('INFO', 'SEND_MANUAL_REPORT', `Sent group report for workshop ${currentWorkshop.subject} to teacher.`, targetDmJid);
+      return;
+    }
   }
 
   /**
@@ -1295,30 +1688,31 @@ export class OrchestratorService {
    * Displays role-based command guide
    */
   private async handleHelp(role: string, replyJid: string): Promise<void> {
-    if (role === 'teacher') {
-      const teacherHelp = 
-        `📋 *Revision Workshop Bot - Teacher Command Guide* 📋\n\n` +
-        `*Group Management & Onboarding*:\n` +
-        `- \`/groups\` : List all WhatsApp groups the bot is participating in.\n` +
-        `- \`/invite student <phone> <name>\` : Onboard a new student (sends DM profile linking request).\n` +
-        `- \`/invite teacher <phone> <name>\` : Onboard a new teacher.\n` +
-        `- \`/add <phone> <subject>\` : Enroll a student in a workshop class (falls back to group invite link DMs if blocked by privacy).\n\n` +
-        `*Class & Homework Management*:\n` +
-        `- \`/homework <lesson_id>\` : Assign a LearnDash lesson as homework for the class.\n` +
-        `- \`/profile <phone> name <new_name>\` : Correct a student's name in the database.\n` +
-        `- \`/profile <phone> id <learndash_id>\` : Link/update a student's LearnDash User ID.\n` +
-        `- \`/check <student_name>\` : Inspect a student's progress history.\n` +
-        `- \`/report\` : Fetch the class completion report.\n` +
-        `- \`/students\` : List students registered in this class.\n` +
-        `- \`/link\` or \`/meeting\` : View the virtual meeting URL.`;
-      await this.whatsapp.sendMessage(replyJid, teacherHelp);
-    } else {
-      const studentHelp = 
-        `📖 *Revision Workshop Bot - Student Command Guide* 📖\n\n` +
-        `- \`/homework\` : List your pending homework assignments and due dates.\n` +
-        `- \`/link\` or \`/meeting\` : Get your class virtual meeting link.`;
-      await this.whatsapp.sendMessage(replyJid, studentHelp);
+    const isTeacher = role === 'teacher';
+    const title = isTeacher 
+      ? `📋 *Revision Workshop Bot - Teacher Command Guide* 📋`
+      : `📖 *Revision Workshop Bot - Student Command Guide* 📖`;
+
+    const lines: string[] = [title, ''];
+
+    for (const cmdKey of Object.keys(COMMANDS)) {
+      const cmd = COMMANDS[cmdKey];
+      if (!cmd.roles.includes(role as any)) {
+        continue;
+      }
+
+      const argsPart = cmd.argsUsage ? ` ${cmd.argsUsage}` : '';
+      lines.push(`- \`/${cmd.name}${argsPart}\` : ${cmd.description}`);
+      if (cmd.exampleUsage) {
+        const examples = cmd.exampleUsage.split('\n');
+        for (const ex of examples) {
+          lines.push(`  _Example:_ \`${ex}\``);
+        }
+      }
+      lines.push('');
     }
+
+    await this.whatsapp.sendMessage(replyJid, lines.join('\n').trim());
   }
 
   private parsePhoneJid(rawPhone: string): string {
@@ -1355,6 +1749,17 @@ export class OrchestratorService {
 
     try {
       if (inviteType === 'teacher') {
+        const oppositeStudent = await this.db.student.findUnique({
+          where: { phoneNumber: targetJid }
+        });
+        if (oppositeStudent) {
+          await this.whatsapp.sendMessage(
+            replyJid,
+            `❌ Error: The phone number ${rawPhone} is already registered as a Student (*${oppositeStudent.name}*) in the database. A number cannot be both a student and a teacher.`
+          );
+          return;
+        }
+
         await this.db.teacher.upsert({
           where: { phoneNumber: targetJid },
           create: { name, phoneNumber: targetJid },
@@ -1372,6 +1777,17 @@ export class OrchestratorService {
           `Type \`/help\` to see the list of available commands.`
         );
       } else {
+        const oppositeTeacher = await this.db.teacher.findUnique({
+          where: { phoneNumber: targetJid }
+        });
+        if (oppositeTeacher) {
+          await this.whatsapp.sendMessage(
+            replyJid,
+            `❌ Error: The phone number ${rawPhone} is already registered as a Teacher (*${oppositeTeacher.name}*) in the database. A number cannot be both a student and a teacher.`
+          );
+          return;
+        }
+
         // Check if student already exists by JID
         let student = await this.db.student.findUnique({
           where: { phoneNumber: targetJid }
@@ -1460,24 +1876,43 @@ export class OrchestratorService {
     });
 
     if (!workshopMatch) {
-      await this.whatsapp.sendMessage(replyJid, `❌ Workshop class matching "${subject}" not found in database.`);
+      const allWorkshops = await this.db.workshop.findMany({
+        select: { subject: true }
+      });
+      const listStr = allWorkshops.map(w => `- ${w.subject}`).join('\n');
+      await this.whatsapp.sendMessage(
+        replyJid,
+        `❌ Workshop class matching "${subject}" not found in database.\n\n` +
+        `📋 *Available class workshops*:\n${listStr || 'None configured yet.'}`
+      );
       return;
     }
 
     try {
-      // Enroll in DB
-      await this.db.studentWorkshop.upsert({
+      // Check if student is already enrolled
+      const existingEnrollment = await this.db.studentWorkshop.findUnique({
         where: {
           studentId_workshopId: {
             studentId: student.id,
             workshopId: workshopMatch.id
           }
-        },
-        create: {
+        }
+      });
+
+      if (existingEnrollment) {
+        await this.whatsapp.sendMessage(
+          replyJid,
+          `ℹ️ Student *${student.name}* is already enrolled in *${workshopMatch.subject}*.`
+        );
+        return;
+      }
+
+      // Enroll in DB
+      await this.db.studentWorkshop.create({
+        data: {
           studentId: student.id,
           workshopId: workshopMatch.id
-        },
-        update: {}
+        }
       });
 
       await logAudit('INFO', 'STUDENT_ENROLLED_VIA_CHAT', `Student ${student.phoneNumber} enrolled in "${workshopMatch.subject}"`, msg.senderJid);
@@ -1550,7 +1985,11 @@ export class OrchestratorService {
     });
 
     if (!student) {
-      await this.whatsapp.sendMessage(replyJid, `❌ Student with phone/JID "${rawPhone}" not found in database.`);
+      await this.whatsapp.sendMessage(
+        replyJid,
+        `❌ Student with phone/JID "${rawPhone}" not found in database.\n\n` +
+        `👉 *Suggestion*: To register this student, use: \`/invite student ${rawPhone} <name>\``
+      );
       return;
     }
 
@@ -1575,7 +2014,11 @@ export class OrchestratorService {
           where: { learndashId: userId }
         });
         if (existing && existing.id !== student.id) {
-          await this.whatsapp.sendMessage(replyJid, `❌ Error: LearnDash ID ${userId} is already linked to student *${existing.name}*.`);
+          await this.whatsapp.sendMessage(
+            replyJid,
+            `❌ Error: LearnDash ID ${userId} is already linked to student *${existing.name}*.\n\n` +
+            `👉 *Suggestion*: If you want to move this ID, update the other student's profile to another ID or "N/A" first.`
+          );
           return;
         }
 
@@ -1602,4 +2045,422 @@ export class OrchestratorService {
       await this.whatsapp.sendMessage(replyJid, `❌ Failed to update profile: ${err.message}`);
     }
   }
+
+  /**
+   * Deletes a homework assignment and cascades progress logs
+   */
+  private async handleTeacherHomeworkDelete(
+    workshopId: string,
+    lessonId: number | null,
+    chatJid: string
+  ): Promise<void> {
+    if (!lessonId) {
+      await this.whatsapp.sendMessage(chatJid, '❌ Please specify a valid Lesson ID to delete. Format: `/homework delete <lesson_id>`');
+      return;
+    }
+
+    const homework = await this.db.homework.findFirst({
+      where: {
+        workshopId,
+        lessonId
+      }
+    });
+
+    if (!homework) {
+      await this.whatsapp.sendMessage(chatJid, `❌ No homework found for Lesson ID ${lessonId} in this class.`);
+      return;
+    }
+
+    await this.db.homework.delete({
+      where: { id: homework.id }
+    });
+
+    await logAudit('INFO', 'DELETE_HOMEWORK', `Teacher deleted homework for Lesson ID ${lessonId} in workshop ${workshopId}`);
+    await this.whatsapp.sendMessage(chatJid, `✅ Successfully deleted homework assignment for *${homework.title}*.`);
+  }
+
+  /**
+   * Directly links a student's own LearnDash ID via command
+   */
+  private async handleDirectStudentLink(
+    studentJid: string,
+    userId: number,
+    chatJid: string
+  ): Promise<void> {
+    const student = await this.db.student.findUnique({
+      where: { phoneNumber: studentJid }
+    });
+
+    if (!student) {
+      await this.whatsapp.sendMessage(chatJid, '❌ You are not registered as a student in the database. Please ask your teacher to invite you.');
+      return;
+    }
+
+    // Check if ID already in use
+    const existing = await this.db.student.findUnique({
+      where: { learndashId: userId }
+    });
+
+    if (existing && existing.id !== student.id) {
+      await this.whatsapp.sendMessage(
+        chatJid,
+        `❌ Error: LearnDash ID ${userId} is already linked to student *${existing.name}*. Please double-check your ID or contact your teacher.`
+      );
+      return;
+    }
+
+    await this.whatsapp.sendMessage(chatJid, '⏳ Verifying your User ID against WordPress LearnDash...');
+    
+    const verifyRes = await this.learndash.verifyUserId(userId);
+    if (verifyRes.exists) {
+      await this.db.student.update({
+        where: { id: student.id },
+        data: { learndashId: userId }
+      });
+      await logAudit('INFO', 'STUDENT_DIRECT_LINK_SUCCESS', `Student ${student.phoneNumber} linked LearnDash ID: ${userId}`, studentJid);
+      await this.whatsapp.sendMessage(chatJid, `✅ Success! Your profile is linked to LearnDash ID: *${userId}*.`);
+    } else {
+      if (verifyRes.error) {
+        await this.whatsapp.sendMessage(chatJid, `⚠️ Verification connection error. We could not verify your ID with the LearnDash server. Please try again later.`);
+      } else {
+        await this.whatsapp.sendMessage(
+          chatJid,
+          `❌ Error: WordPress/LearnDash account ID *${userId}* was not found. Please double-check your ID.`
+        );
+      }
+    }
+  }
+
+  /**
+   * Allows teacher to unlink a student's LearnDash ID by phone
+   */
+  private async handleTeacherUnlink(rawPhone: string, replyJid: string): Promise<void> {
+    const targetJid = this.parsePhoneJid(rawPhone);
+    const student = await this.db.student.findUnique({
+      where: { phoneNumber: targetJid }
+    });
+
+    if (!student) {
+      await this.whatsapp.sendMessage(replyJid, `❌ Student with phone "${rawPhone}" not found in database.`);
+      return;
+    }
+
+    const placeholderId = -Math.floor(Date.now() / 1000) - Math.floor(Math.random() * 10000);
+    await this.db.student.update({
+      where: { id: student.id },
+      data: { learndashId: placeholderId }
+    });
+
+    await logAudit('INFO', 'TEACHER_UNLINK_STUDENT', `Teacher unlinked LearnDash ID for student ${student.phoneNumber}`, targetJid);
+    await this.whatsapp.sendMessage(replyJid, `✅ Successfully unlinked LearnDash ID for student *${student.name}*.`);
+  }
+
+  /**
+   * Allows student to unlink their own LearnDash ID
+   */
+  private async handleStudentUnlink(studentJid: string, replyJid: string): Promise<void> {
+    const student = await this.db.student.findUnique({
+      where: { phoneNumber: studentJid }
+    });
+
+    if (!student) {
+      await this.whatsapp.sendMessage(replyJid, '❌ You are not registered as a student in the database.');
+      return;
+    }
+
+    const placeholderId = -Math.floor(Date.now() / 1000) - Math.floor(Math.random() * 10000);
+    await this.db.student.update({
+      where: { id: student.id },
+      data: { learndashId: placeholderId }
+    });
+
+    await logAudit('INFO', 'STUDENT_UNLINK_SELF', `Student ${student.phoneNumber} unlinked their own LearnDash ID`, studentJid);
+    await this.whatsapp.sendMessage(replyJid, '✅ Successfully unlinked your LearnDash ID from this phone number.');
+  }
+
+  /**
+   * Handles deletion of student/teacher records globally, or unenrollment from specific workshop subjects
+   */
+  private async handleTeacherRemove(msg: IncomingMessage, replyJid: string): Promise<void> {
+    const textParts = msg.text.trim().split(/\s+/);
+    const type = (textParts[1] || '').toLowerCase();
+    const rawPhone = textParts[2] || '';
+    const subject = textParts.slice(3).join(' ').trim();
+
+    if (!type || !rawPhone) {
+      await this.whatsapp.sendMessage(replyJid, '❌ Invalid format. Use: `/remove student|teacher <phone> [<subject>]`');
+      return;
+    }
+
+    const targetJid = this.parsePhoneJid(rawPhone);
+
+    try {
+      if (type === 'teacher') {
+        const teacher = await this.db.teacher.findUnique({
+          where: { phoneNumber: targetJid },
+          include: { workshops: true }
+        });
+
+        if (!teacher) {
+          await this.whatsapp.sendMessage(replyJid, `❌ Teacher with phone "${rawPhone}" not found in database.`);
+          return;
+        }
+
+        if (teacher.workshops.length > 0) {
+          const subjects = teacher.workshops.map(w => w.subject).join(', ');
+          await this.whatsapp.sendMessage(
+            replyJid,
+            `❌ Cannot remove teacher *${teacher.name}* because they are assigned to active workshops: *${subjects}*.\n` +
+            `Please delete or reassign those workshops first.`
+          );
+          return;
+        }
+
+        await this.db.teacher.delete({
+          where: { id: teacher.id }
+        });
+
+        await logAudit('INFO', 'TEACHER_REMOVED', `Teacher ${teacher.name} (${targetJid}) deleted globally`, msg.senderJid);
+        await this.whatsapp.sendMessage(replyJid, `✅ Teacher *${teacher.name}* successfully removed from the database.`);
+      } else {
+        const student = await this.db.student.findUnique({
+          where: { phoneNumber: targetJid },
+          include: { enrollments: { include: { workshop: true } } }
+        });
+
+        if (!student) {
+          await this.whatsapp.sendMessage(replyJid, `❌ Student with phone "${rawPhone}" not found in database.`);
+          return;
+        }
+
+        if (subject) {
+          const enrollment = student.enrollments.find(
+            e => e.workshop.subject.toLowerCase().includes(subject.toLowerCase())
+          );
+
+          if (!enrollment) {
+            const enrolledClasses = student.enrollments.map(e => e.workshop.subject).join(', ');
+            await this.whatsapp.sendMessage(
+              replyJid,
+              `❌ Student *${student.name}* is not enrolled in a workshop matching "${subject}".\n` +
+              `Active enrollments: *${enrolledClasses || 'None'}*`
+            );
+            return;
+          }
+
+          await this.db.studentWorkshop.delete({
+            where: {
+              studentId_workshopId: {
+                studentId: student.id,
+                workshopId: enrollment.workshopId
+              }
+            }
+          });
+
+          if (enrollment.workshop.whatsappJid) {
+            try {
+              await this.whatsapp.removeParticipants(enrollment.workshop.whatsappJid, [targetJid]);
+            } catch (err) {
+              // Ignore group sync failure
+            }
+          }
+
+          await logAudit('INFO', 'STUDENT_UNENROLLED', `Student ${student.name} unenrolled from "${enrollment.workshop.subject}"`, msg.senderJid);
+          await this.whatsapp.sendMessage(
+            replyJid,
+            `✅ Student *${student.name}* successfully unenrolled from *${enrollment.workshop.subject}*.`
+          );
+        } else {
+          await this.db.student.delete({
+            where: { id: student.id }
+          });
+
+          await logAudit('INFO', 'STUDENT_REMOVED', `Student ${student.name} (${targetJid}) deleted globally`, msg.senderJid);
+          await this.whatsapp.sendMessage(replyJid, `✅ Student *${student.name}* successfully removed from the database.`);
+        }
+      }
+    } catch (err: any) {
+      await logAudit('ERROR', 'REMOVE_COMMAND_FAILED', `Failed to remove: ${err.message}`, msg.senderJid);
+      await this.whatsapp.sendMessage(replyJid, `❌ Failed to execute remove command: ${err.message}`);
+    }
+  }
+
+  private async handleTeacherClassCRUD(args: string[], replyJid: string): Promise<void> {
+    const subAction = args[0].toLowerCase();
+    const daysList = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    if (subAction === 'list') {
+      const workshops = await this.db.workshop.findMany({
+        include: { teacher: true }
+      });
+      if (workshops.length === 0) {
+        await this.whatsapp.sendMessage(replyJid, '📋 *No workshops registered yet.*');
+        return;
+      }
+      let listMsg = `📋 *All Registered Classes (${workshops.length}):*\n\n`;
+      for (const w of workshops) {
+        listMsg += `- *${w.subject}* (ID: ${w.id})\n` +
+          `  Course ID: ${w.courseId}\n` +
+          `  Teacher: ${w.teacher.name} (${w.teacher.phoneNumber.split('@')[0]})\n` +
+          `  Schedule: Every ${daysList[w.classDayOfWeek]} at ${w.classTime}\n` +
+          `  Link: ${w.meetingLink || 'None'}\n\n`;
+      }
+      await this.whatsapp.sendMessage(replyJid, listMsg.trim());
+      return;
+    }
+
+    if (subAction === 'create') {
+      const createParams = parseClassCreationArgs(args.slice(1));
+      if (!createParams) {
+        await this.whatsapp.sendMessage(
+          replyJid,
+          '❌ Invalid arguments for `/class create`. Format:\n' +
+          '`/class create <subject> <courseId> <day> <time> <teacher_phone> <teacher_name>`\n' +
+          'Example: `/class create SPM Physics 101 Monday 20:00 60123456789 John Doe`'
+        );
+        return;
+      }
+
+      // Check if workshop subject already exists to prevent duplicate
+      const existing = await this.db.workshop.findFirst({
+        where: { subject: createParams.subject }
+      });
+      if (existing) {
+        await this.whatsapp.sendMessage(replyJid, `❌ A workshop with subject "${createParams.subject}" already exists.`);
+        return;
+      }
+
+      // Upsert teacher
+      const teacher = await this.db.teacher.upsert({
+        where: { phoneNumber: createParams.teacherPhone },
+        create: { name: createParams.teacherName, phoneNumber: createParams.teacherPhone },
+        update: { name: createParams.teacherName }
+      });
+
+      // Generate default Google Meet link
+      const letters = 'abcdefghijklmnopqrstuvwxyz';
+      const randSegment = (len: number) => Array.from({ length: len }, () => letters[Math.floor(Math.random() * letters.length)]).join('');
+      const defaultLink = `https://meet.google.com/${randSegment(3)}-${randSegment(4)}-${randSegment(3)}`;
+
+      // Create workshop
+      const workshop = await this.db.workshop.create({
+        data: {
+          subject: createParams.subject,
+          courseId: createParams.courseId,
+          classDayOfWeek: createParams.dayOfWeek,
+          classTime: createParams.time,
+          teacherId: teacher.id,
+          meetingLink: defaultLink
+        }
+      });
+
+      await logAudit('INFO', 'CREATE_CLASS', `Teacher created class ${workshop.subject} (ID: ${workshop.id})`);
+
+      await this.whatsapp.sendMessage(
+        replyJid,
+        `✅ *Workshop Successfully Created!*\n\n` +
+        `🏫 *Subject*: ${workshop.subject}\n` +
+        `🆔 *Course ID*: ${workshop.courseId}\n` +
+        `📅 *Schedule*: Every ${daysList[workshop.classDayOfWeek]} at ${workshop.classTime}\n` +
+        `👩‍🏫 *Teacher*: ${teacher.name} (${teacher.phoneNumber.split('@')[0]})\n` +
+        `📅 *Class Link*: ${workshop.meetingLink}`
+      );
+      return;
+    }
+
+    if (subAction === 'delete' || subAction === 'archive') {
+      const query = args.slice(1).join(' ').trim();
+      if (!query) {
+        await this.whatsapp.sendMessage(replyJid, '❌ Please specify the class subject or ID to delete/archive. Format: `/class delete <subject_or_id>`');
+        return;
+      }
+      const workshop = await this.db.workshop.findFirst({
+        where: {
+          OR: [
+            { id: query },
+            { subject: { contains: query, mode: 'insensitive' } }
+          ]
+        }
+      });
+      if (!workshop) {
+        await this.whatsapp.sendMessage(replyJid, `❌ Class "${query}" not found.`);
+        return;
+      }
+      await this.db.workshop.delete({
+        where: { id: workshop.id }
+      });
+      await logAudit('INFO', 'DELETE_CLASS', `Teacher deleted class ${workshop.subject} (ID: ${workshop.id})`);
+      await this.whatsapp.sendMessage(replyJid, `✅ Workshop *${workshop.subject}* (ID: ${workshop.id}) has been successfully deleted.`);
+      return;
+    }
+  }
+}
+
+interface ClassCreationParams {
+  subject: string;
+  courseId: number;
+  dayOfWeek: number;
+  time: string;
+  teacherPhone: string;
+  teacherName: string;
+}
+
+function parseClassCreationArgs(args: string[]): ClassCreationParams | null {
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const dayAbbrevs = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+  let foundIdx = -1;
+  for (let i = 0; i < args.length - 4; i++) {
+    const isNum = /^\d+$/.test(args[i]);
+    if (!isNum) continue;
+
+    const nextArg = args[i + 1].toLowerCase();
+    const isDay = days.includes(nextArg) || dayAbbrevs.includes(nextArg) || /^[0-6]$/.test(nextArg);
+    if (!isDay) continue;
+
+    const nextNextArg = args[i + 2];
+    const isTime = /^\d{1,2}(:\d{2})?(am|pm)?$/i.test(nextNextArg) || /^\d{1,2}:\d{2}$/.test(nextNextArg);
+    if (!isTime) continue;
+
+    const nextNextNextArg = args[i + 3].replace(/[@s\.whatsapp\.net]/g, '');
+    const isPhone = /^\d{8,15}$/.test(nextNextNextArg);
+    if (!isPhone) continue;
+
+    foundIdx = i;
+    break;
+  }
+
+  if (foundIdx === -1) {
+    return null;
+  }
+
+  const subject = args.slice(0, foundIdx).join(' ');
+  const courseId = parseInt(args[foundIdx], 10);
+  const dayStr = args[foundIdx + 1].toLowerCase();
+  
+  let dayOfWeek = parseInt(dayStr, 10);
+  if (isNaN(dayOfWeek)) {
+    dayOfWeek = days.indexOf(dayStr);
+    if (dayOfWeek === -1) {
+      dayOfWeek = dayAbbrevs.indexOf(dayStr);
+    }
+  }
+
+  const time = args[foundIdx + 2];
+  const teacherPhoneRaw = args[foundIdx + 3];
+  const teacherPhone = teacherPhoneRaw.includes('@') ? teacherPhoneRaw : `${teacherPhoneRaw}@s.whatsapp.net`;
+  const teacherName = args.slice(foundIdx + 4).join(' ');
+
+  if (!subject || isNaN(courseId) || dayOfWeek === -1 || !time || !teacherPhone || !teacherName) {
+    return null;
+  }
+
+  return {
+    subject,
+    courseId,
+    dayOfWeek,
+    time,
+    teacherPhone,
+    teacherName
+  };
 }

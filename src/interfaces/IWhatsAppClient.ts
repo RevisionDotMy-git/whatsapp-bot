@@ -15,6 +15,7 @@ export interface IncomingMessage {
   timestamp: number; // Unix timestamp
   document?: DocumentAttachment; // Optional document attachment
   senderPn?: string; // Optional real phone number JID if senderJid is an LID (e.g. "@s.whatsapp.net")
+  rawKey?: any;      // The raw message key from WhatsApp client
 }
 
 export interface IWhatsAppClient {
@@ -87,4 +88,9 @@ export interface IWhatsAppClient {
    * Returns the bot's own WhatsApp JID (normalized) or null if not connected
    */
   getBotJid(): string | null;
+
+  /**
+   * Deletes a message for everyone in a chat/group
+   */
+  deleteMessage(jid: string, key: any): Promise<void>;
 }

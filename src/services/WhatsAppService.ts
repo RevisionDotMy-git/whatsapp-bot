@@ -181,6 +181,7 @@ export class WhatsAppService implements IWhatsAppClient {
             timestamp: typeof msg.messageTimestamp === 'number' ? msg.messageTimestamp : Number(msg.messageTimestamp),
             document: documentAttachment,
             senderPn: (msg.key as any).senderPn || undefined,
+            rawKey: msg.key,
           };
 
           // Trigger registered callbacks
@@ -339,6 +340,17 @@ export class WhatsAppService implements IWhatsAppClient {
     if (!this.sock || !this.sock.user) return null;
     const id = this.sock.user.id;
     return id.includes(':') ? id.split(':')[0] + '@s.whatsapp.net' : id;
+  }
+
+  async deleteMessage(jid: string, key: any): Promise<void> {
+    if (!this.sock || !this.isReady) throw new Error('WhatsApp client not initialized or not connected');
+    try {
+      await this.sock.sendMessage(jid, { delete: key });
+      await logAudit('INFO', 'WHATSAPP_MESSAGE_DELETE', `Deleted message in chat ${jid}`);
+    } catch (err: any) {
+      await logAudit('ERROR', 'WHATSAPP_MESSAGE_DELETE_FAILED', `Failed to delete message in ${jid}: ${err.message}`);
+      throw err;
+    }
   }
 
   private getDocumentMessage(message: proto.IMessage | null | undefined): proto.IMessage['documentMessage'] | null | undefined {

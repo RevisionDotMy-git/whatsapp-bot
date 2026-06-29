@@ -92,7 +92,7 @@ describe('WhatsApp Command Parser (Perspective: /groups authorization)', () => {
 
   it('should authorize teacher to query groups', () => {
     const result = parseCommand('/groups', teacherJid, teacherJid, studentJids);
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       command: 'groups',
       lessonId: null,
       role: 'teacher',

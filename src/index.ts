@@ -45,12 +45,20 @@ server.post('/api/workshop', async (request, reply) => {
       update: { name: body.teacherName },
     });
 
+    // 2. Resolve or generate meeting link (default to Google Meet)
+    let meetingLink = body.meetingLink;
+    if (!meetingLink || meetingLink.trim() === '') {
+      const letters = 'abcdefghijklmnopqrstuvwxyz';
+      const randSegment = (len: number) => Array.from({ length: len }, () => letters[Math.floor(Math.random() * letters.length)]).join('');
+      meetingLink = `https://meet.google.com/${randSegment(3)}-${randSegment(4)}-${randSegment(3)}`;
+    }
+
     // 2. Create the workshop
     const workshop = await prisma.workshop.create({
       data: {
         subject: body.subject,
         courseId: body.courseId,
-        meetingLink: body.meetingLink,
+        meetingLink: meetingLink,
         classDayOfWeek: body.classDayOfWeek,
         classTime: body.classTime,
         teacherId: teacher.id,
