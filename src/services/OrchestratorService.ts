@@ -161,21 +161,22 @@ export class OrchestratorService {
 
     // Auto-register the bot's own number as a Teacher in the DB if it is the sender
     const botJid = this.whatsapp.getBotJid();
-    if (botJid) {
-      const isBotSender = msg.senderJid === botJid || (msg.senderPn && msg.senderPn === botJid);
-      if (isBotSender) {
-        const existingTeacher = await this.db.teacher.findUnique({
-          where: { phoneNumber: botJid },
+    const isBotSender = !!(
+      (botJid && (msg.senderJid === botJid || (msg.senderPn && msg.senderPn === botJid))) ||
+      (msg.rawKey && msg.rawKey.fromMe === true)
+    );
+    if (isBotSender && botJid) {
+      const existingTeacher = await this.db.teacher.findUnique({
+        where: { phoneNumber: botJid },
+      });
+      if (!existingTeacher) {
+        await this.db.teacher.create({
+          data: {
+            name: 'Teacher (Bot)',
+            phoneNumber: botJid,
+          },
         });
-        if (!existingTeacher) {
-          await this.db.teacher.create({
-            data: {
-              name: 'Teacher (Bot)',
-              phoneNumber: botJid,
-            },
-          });
-          await logAudit('INFO', 'TEACHER_AUTO_REGISTER', `Automatically registered bot JID ${botJid} as a Teacher in the database.`, botJid);
-        }
+        await logAudit('INFO', 'TEACHER_AUTO_REGISTER', `Automatically registered bot JID ${botJid} as a Teacher in the database.`, botJid);
       }
     }
 
@@ -343,12 +344,14 @@ export class OrchestratorService {
     }
 
     if (!workshop) {
-      await logAudit(
-        'WARN',
-        'WORKSHOP_NOT_FOUND',
-        `Could not resolve workshop for sender ${msg.senderJid} or chat ${msg.chatJid}`,
-        msg.senderJid
-      );
+      if (msg.isGroup) {
+        await logAudit(
+          'WARN',
+          'WORKSHOP_NOT_FOUND',
+          `Could not resolve workshop for sender ${msg.senderJid} or chat ${msg.chatJid}`,
+          msg.senderJid
+        );
+      }
     } else {
       await logAudit(
         'INFO',
@@ -638,6 +641,9 @@ export class OrchestratorService {
     }
     if (botJid && !teacherJids.includes(botJid)) {
       teacherJids.push(botJid);
+    }
+    if (isBotSender && !teacherJids.includes(msg.senderJid)) {
+      teacherJids.push(msg.senderJid);
     }
 
     // Determine the normalized sender JID to match database records
