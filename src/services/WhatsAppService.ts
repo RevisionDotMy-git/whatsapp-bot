@@ -50,6 +50,7 @@ export class WhatsAppService implements IWhatsAppClient {
       connectTimeoutMs: CONFIG.WHATSAPP.CONNECT_TIMEOUT_MS,
       keepAliveIntervalMs: CONFIG.WHATSAPP.KEEP_ALIVE_INTERVAL_MS,
       fireInitQueries: CONFIG.WHATSAPP.FIRE_INIT_QUERIES,
+      maxMsgRetryCount: 1,
     });
 
     this.sock = sock;
