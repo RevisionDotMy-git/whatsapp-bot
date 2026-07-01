@@ -136,7 +136,7 @@ export class OrchestratorService {
       msg.senderJid
     );
 
-    const targetChatJid = (!msg.isGroup && msg.senderPn) ? msg.senderPn : msg.chatJid;
+    const targetChatJid = msg.chatJid;
 
     // Auto-register the bot's own number as a Teacher in the DB if it is the sender
     const botJid = this.whatsapp.getBotJid();

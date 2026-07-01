@@ -119,6 +119,17 @@ export class CommandRouter implements ICommandRouter {
 
         try {
           const targetJid = this.parsePhoneJid(rawPhone);
+
+          let isPending = false;
+          if (inviteType === 'student') {
+            const existingStudent = await this.prisma.student.findUnique({
+              where: { phoneNumber: targetJid },
+            });
+            if (existingStudent && existingStudent.learndashId < 0) {
+              isPending = true;
+            }
+          }
+
           const { inviteMsg } = await this.classManager.inviteUser(inviteType, targetJid, name);
           let warningText = '';
           if (inviteMsg) {
@@ -132,11 +143,18 @@ export class CommandRouter implements ICommandRouter {
           const tipText = inviteType === 'student'
             ? `\n\n*Tip*: If they do not receive the message, please ask them to message this bot number first to bypass WhatsApp's new reach-out timelock.`
             : '';
+          
+          let successText = '';
+          if (inviteType === 'teacher') {
+            successText = `✅ Teacher *${name}* successfully registered in the database.`;
+          } else if (isPending) {
+            successText = `ℹ️ Student *${name}* was already invited but pending. Onboarding DM has been re-sent.${warningText}${tipText}`;
+          } else {
+            successText = `✅ Student *${name}* invited. Onboarding DM sent.${warningText}${tipText}`;
+          }
+
           return {
-            replyText:
-              inviteType === 'teacher'
-                ? `✅ Teacher *${name}* successfully registered in the database.`
-                : `✅ Student *${name}* invited. Onboarding DM sent.${warningText}${tipText}`,
+            replyText: successText,
             shouldDeleteOriginal,
           };
         } catch (err: any) {
