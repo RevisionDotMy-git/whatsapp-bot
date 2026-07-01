@@ -1,7 +1,7 @@
-import { LearnDashService } from './services/LearnDashService.js';
-import { LLMService } from './services/LLMService.js';
-import { parseCommand } from './utils/commandParser.js';
-import { CONFIG } from './config/constants.js';
+import { LearnDashService } from '../services/LearnDashService.js';
+import { LLMService } from '../services/LLMService.js';
+import { parseCommand } from '../utils/commandParser.js';
+import { CONFIG } from '../config/constants.js';
 import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,

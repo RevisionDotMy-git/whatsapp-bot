@@ -3,6 +3,7 @@ import { OrchestratorService } from '../services/OrchestratorService.js';
 import { IncomingMessage } from '../interfaces/IWhatsAppClient.js';
 import { logAudit } from '../services/db.js';
 import fs from 'fs';
+import path from 'path';
 
 // Mock the db module to prevent actual database calls and capture audit logs
 vi.mock('../services/db.js', () => {
@@ -53,13 +54,26 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
       student: {
         findFirst: vi.fn(),
         findUnique: vi.fn(),
+        findMany: vi.fn().mockResolvedValue([
+          { phoneNumber: 'student-jid' },
+          { phoneNumber: '60123456789@s.whatsapp.net' },
+          { phoneNumber: '60198765432@s.whatsapp.net' },
+          { phoneNumber: '248030116757531@lid' },
+          { phoneNumber: '60199998888@s.whatsapp.net' }
+        ]),
         create: vi.fn(),
         update: vi.fn(),
         delete: vi.fn(),
+        upsert: vi.fn(),
       },
       teacher: {
         findFirst: vi.fn(),
         findUnique: vi.fn(),
+        findMany: vi.fn().mockResolvedValue([
+          { phoneNumber: '60122082435@s.whatsapp.net' },
+          { phoneNumber: '60122082435' },
+          { phoneNumber: '60122082437@lid' }
+        ]),
         create: vi.fn(),
         update: vi.fn(),
         delete: vi.fn(),
@@ -67,6 +81,7 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
       },
       progressLog: {
         upsert: vi.fn(),
+        create: vi.fn(),
         findMany: vi.fn(),
         findFirst: vi.fn(),
         update: vi.fn(),
@@ -88,6 +103,14 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
 
     learndashMock = {
       verifyUserId: vi.fn(),
+      isCacheAvailable: vi.fn().mockReturnValue(true),
+      getCachedData: vi.fn().mockImplementation(() => {
+        const cacheFilePath = path.join(process.cwd(), 'data', 'learndash_cache.json');
+        if (fs.existsSync(cacheFilePath)) {
+          return JSON.parse(fs.readFileSync(cacheFilePath, 'utf-8'));
+        }
+        return [];
+      }),
     };
     llmMock = {};
 
@@ -903,6 +926,7 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
         learndashId: 1001,
       };
       dbMock.student.findUnique = vi.fn().mockResolvedValue(targetStudent);
+      dbMock.student.upsert.mockResolvedValue(targetStudent);
 
       // Case A: direct add works
       const msgDirect: IncomingMessage = {
@@ -1463,7 +1487,7 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
       };
 
       // Mock compileProgressReport helper to return mock text
-      const spyCompile = vi.spyOn(orchestrator, 'compileProgressReport').mockResolvedValue('Mock Report text');
+      const spyCompile = vi.spyOn((orchestrator as any).commandRouter, 'compileProgressReport').mockResolvedValue('Mock Report text');
 
       await (orchestrator as any).handleMessage(msg);
 

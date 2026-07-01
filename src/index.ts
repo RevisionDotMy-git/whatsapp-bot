@@ -8,6 +8,7 @@ import { LearnDashService } from './services/LearnDashService.js';
 import { LLMService } from './services/LLMService.js';
 import { OrchestratorService } from './services/OrchestratorService.js';
 import { CONFIG } from './config/constants.js';
+import { EnvDiagnostics } from './modules/envDiagnostics/EnvDiagnostics.js';
 
 const server = fastify({ logger: true });
 
@@ -819,6 +820,14 @@ server.post('/api/send-message', async (request, reply) => {
 
 // Start services and listen
 async function main() {
+  // Run startup diagnostics
+  const diagnostics = new EnvDiagnostics(prisma);
+  const diagnosticsPassed = await diagnostics.runAllChecks();
+  if (!diagnosticsPassed) {
+    console.error('🩺 Critical startup checks failed. Shutting down...');
+    process.exit(1);
+  }
+
   // Connect to WhatsApp
   await whatsapp.connect();
   // Start orchestrator listeners

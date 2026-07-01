@@ -5,7 +5,7 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import path from 'path';
-import { CONFIG } from './config/constants.js';
+import { CONFIG } from '../config/constants.js';
 
 let isPairingCodeRequested = false;
 
