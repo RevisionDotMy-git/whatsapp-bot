@@ -120,6 +120,13 @@ export class CommandRouter implements ICommandRouter {
         try {
           const targetJid = this.parsePhoneJid(rawPhone);
 
+          // Clear any corrupt/existing signal session files for this number to force a fresh cryptographic handshake
+          const cleanPhone = rawPhone.replace(/\D/g, '');
+          await this.whatsapp.clearSessionForJid(targetJid);
+          if (cleanPhone) {
+            await this.whatsapp.clearSessionForJid(`${cleanPhone}@s.whatsapp.net`);
+          }
+
           let isPending = false;
           if (inviteType === 'student') {
             const existingStudent = await this.prisma.student.findUnique({

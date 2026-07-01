@@ -21,6 +21,39 @@ export class WhatsAppService implements IWhatsAppClient {
   private participantCallbacks: ((event: { groupJid: string; participants: string[]; action: 'add' | 'remove' }) => Promise<void> | void)[] = [];
   private connectionOpenCallbacks: (() => Promise<void> | void)[] = [];
   private sentMessageIds = new Set<string>();
+  private lidCache = new Map<string, string>();
+  private cacheFilePath = path.join(process.cwd(), 'data', 'lid_cache.json');
+
+  constructor() {
+    this.loadLidCache();
+  }
+
+  private loadLidCache() {
+    try {
+      if (fs.existsSync(this.cacheFilePath)) {
+        const data = JSON.parse(fs.readFileSync(this.cacheFilePath, 'utf-8'));
+        for (const [k, v] of Object.entries(data)) {
+          this.lidCache.set(k, v as string);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load LID cache:', err);
+    }
+  }
+
+  private saveLidCache(phoneJid: string, lidJid: string) {
+    if (this.lidCache.get(phoneJid) === lidJid) return;
+    this.lidCache.set(phoneJid, lidJid);
+    try {
+      const data: Record<string, string> = {};
+      for (const [k, v] of this.lidCache.entries()) {
+        data[k] = v;
+      }
+      fs.writeFileSync(this.cacheFilePath, JSON.stringify(data, null, 2), 'utf-8');
+    } catch (err) {
+      console.error('Failed to save LID cache:', err);
+    }
+  }
 
   async connect(): Promise<void> {
     // If there is an existing socket, end it and remove its listeners
@@ -182,8 +215,12 @@ export class WhatsAppService implements IWhatsAppClient {
             timestamp: typeof msg.messageTimestamp === 'number' ? msg.messageTimestamp : Number(msg.messageTimestamp),
             document: documentAttachment,
             senderPn: (msg.key as any).senderPn || undefined,
-            rawKey: msg.key,
           };
+
+          // If we receive a message from an LID JID and we have their primary phonePn, cache the mapping
+          if (incoming.senderPn && incoming.senderPn !== incoming.senderJid && incoming.senderJid.endsWith('@lid')) {
+            this.saveLidCache(incoming.senderPn, incoming.senderJid);
+          }
 
           // Trigger registered callbacks
           for (const callback of this.messageCallbacks) {
@@ -218,8 +255,17 @@ export class WhatsAppService implements IWhatsAppClient {
   async sendMessage(jid: string, text: string): Promise<void> {
     if (!this.sock || !this.isReady) throw new Error('WhatsApp client not initialized or not connected');
 
+    // Transparent JID redirection to active companion device (LID JID)
+    let targetJid = jid;
+    if (jid.endsWith('@s.whatsapp.net')) {
+      const mappedLid = this.lidCache.get(jid);
+      if (mappedLid) {
+        targetJid = mappedLid;
+      }
+    }
+
     try {
-      const sent = await this.sock.sendMessage(jid, { text });
+      const sent = await this.sock.sendMessage(targetJid, { text });
       if (sent?.key?.id) {
         this.sentMessageIds.add(sent.key.id);
         // Bounded size to prevent memory leaks
@@ -346,6 +392,51 @@ export class WhatsAppService implements IWhatsAppClient {
       return parts[0] + suffix;
     }
     return id;
+  }
+
+  async clearSessionForJid(jid: string): Promise<void> {
+    const cleanJid = jid.split('@')[0].split(':')[0];
+    const sessionDir = path.join(process.cwd(), 'whatsapp_session');
+    try {
+      if (fs.existsSync(sessionDir)) {
+        const files = fs.readdirSync(sessionDir);
+        let clearedCount = 0;
+        for (const file of files) {
+          if (file.startsWith(`session-${cleanJid}.`)) {
+            const filePath = path.join(sessionDir, file);
+            fs.unlinkSync(filePath);
+            clearedCount++;
+          }
+        }
+        if (clearedCount > 0) {
+          await logAudit('INFO', 'SESSION_CLEARED_FOR_JID', `Cleared ${clearedCount} corrupt session file(s) for JID ${jid}`);
+        }
+      }
+
+      // Also clear any mapped LID JIDs for this primary JID
+      if (jid.endsWith('@s.whatsapp.net')) {
+        const mappedLid = this.lidCache.get(jid);
+        if (mappedLid) {
+          const cleanLid = mappedLid.split('@')[0].split(':')[0];
+          if (fs.existsSync(sessionDir)) {
+            const files = fs.readdirSync(sessionDir);
+            let lidClearedCount = 0;
+            for (const file of files) {
+              if (file.startsWith(`session-${cleanLid}.`)) {
+                const filePath = path.join(sessionDir, file);
+                fs.unlinkSync(filePath);
+                lidClearedCount++;
+              }
+            }
+            if (lidClearedCount > 0) {
+              await logAudit('INFO', 'SESSION_CLEARED_FOR_JID', `Cleared ${lidClearedCount} corrupt session file(s) for mapped LID JID ${mappedLid}`);
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error(`Failed to clear session for JID ${jid}:`, err);
+    }
   }
 
   async deleteMessage(jid: string, key: any): Promise<void> {

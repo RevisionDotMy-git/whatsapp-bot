@@ -103,6 +103,7 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
       getBotJid: vi.fn().mockReturnValue('60122082435@s.whatsapp.net'),
       deleteMessage: vi.fn().mockResolvedValue(undefined),
       isConnected: vi.fn().mockReturnValue(true),
+      clearSessionForJid: vi.fn().mockResolvedValue(undefined),
     };
 
     learndashMock = {

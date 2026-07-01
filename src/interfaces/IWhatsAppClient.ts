@@ -90,6 +90,11 @@ export interface IWhatsAppClient {
   getBotJid(): string | null;
 
   /**
+   * Clears corrupt signal session files for a specific JID to force a fresh cryptographic handshake
+   */
+  clearSessionForJid(jid: string): Promise<void>;
+
+  /**
    * Deletes a message for everyone in a chat/group
    */
   deleteMessage(jid: string, key: any): Promise<void>;
