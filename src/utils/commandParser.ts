@@ -52,9 +52,9 @@ export function parseCommand(
 
   // Identify role using cleaned phone numbers to prevent companion/LID mismatches
   const teacherJids = Array.isArray(teacherJidOrJids) ? teacherJidOrJids : [teacherJidOrJids];
-  const cleanSender = senderJid.split('@')[0];
-  const cleanTeachers = teacherJids.map((j) => j.split('@')[0]);
-  const cleanStudents = studentJids.map((j) => j.split('@')[0]);
+  const cleanSender = senderJid.split('@')[0].split(':')[0];
+  const cleanTeachers = teacherJids.map((j) => j.split('@')[0].split(':')[0]);
+  const cleanStudents = studentJids.map((j) => j.split('@')[0].split(':')[0]);
 
   const cleanAdmin = CONFIG.BOT.PHONE_NUMBER.replace(/\D/g, '');
 

@@ -202,11 +202,11 @@ export class OrchestratorService {
     const teacherJids = teachers.map((t) => t.phoneNumber);
     const studentJids = students.map((s) => s.phoneNumber);
 
-    const cleanSender = msg.senderJid.split('@')[0];
-    const cleanSenderPn = msg.senderPn ? msg.senderPn.split('@')[0] : null;
-    const cleanTeacherJids = teacherJids.map((j) => j.split('@')[0]);
-    const cleanStudentJids = studentJids.map((j) => j.split('@')[0]);
-    const cleanWorkshopTeacher = workshop ? workshop.teacher.phoneNumber.split('@')[0] : null;
+    const cleanSender = msg.senderJid.split('@')[0].split(':')[0];
+    const cleanSenderPn = msg.senderPn ? msg.senderPn.split('@')[0].split(':')[0] : null;
+    const cleanTeacherJids = teacherJids.map((j) => j.split('@')[0].split(':')[0]);
+    const cleanStudentJids = studentJids.map((j) => j.split('@')[0].split(':')[0]);
+    const cleanWorkshopTeacher = workshop ? workshop.teacher.phoneNumber.split('@')[0].split(':')[0] : null;
 
     const cleanAdmin = CONFIG.BOT.PHONE_NUMBER.replace(/\D/g, '');
     const isSelfMessage = !!(msg.rawKey && msg.rawKey.fromMe);

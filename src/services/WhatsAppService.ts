@@ -207,6 +207,14 @@ export class WhatsAppService implements IWhatsAppClient {
 
           const isGroup = chatJid.endsWith('@g.us');
 
+          let senderPn = (msg.key as any).senderPn || undefined;
+          if (!senderPn && senderJid.endsWith('@lid')) {
+            const mappedPhone = this.getPhoneJidFromLid(senderJid);
+            if (mappedPhone) {
+              senderPn = mappedPhone;
+            }
+          }
+
           const incoming: IncomingMessage = {
             senderJid,
             chatJid,
@@ -214,7 +222,7 @@ export class WhatsAppService implements IWhatsAppClient {
             isGroup,
             timestamp: typeof msg.messageTimestamp === 'number' ? msg.messageTimestamp : Number(msg.messageTimestamp),
             document: documentAttachment,
-            senderPn: (msg.key as any).senderPn || undefined,
+            senderPn,
           };
 
           // If we receive a message from an LID JID and we have their primary phonePn, cache the mapping
@@ -392,6 +400,17 @@ export class WhatsAppService implements IWhatsAppClient {
       return parts[0] + suffix;
     }
     return id;
+  }
+
+  private getPhoneJidFromLid(lidJid: string): string | null {
+    const cleanLid = lidJid.split('@')[0].split(':')[0];
+    for (const [phoneJid, cachedLid] of this.lidCache.entries()) {
+      const cleanCachedLid = cachedLid.split('@')[0].split(':')[0];
+      if (cleanCachedLid === cleanLid) {
+        return phoneJid;
+      }
+    }
+    return null;
   }
 
   async clearSessionForJid(jid: string): Promise<void> {
