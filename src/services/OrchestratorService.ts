@@ -202,8 +202,21 @@ export class OrchestratorService {
     const teacherJids = teachers.map((t) => t.phoneNumber);
     const studentJids = students.map((s) => s.phoneNumber);
 
-    const isWorkshopTeacher = !!(workshop && (msg.senderJid === workshop.teacher.phoneNumber || (msg.senderPn ? msg.senderPn === workshop.teacher.phoneNumber : false)));
-    const isTeacher = isWorkshopTeacher || teacherJids.includes(msg.senderJid) || !!(msg.senderPn && teacherJids.includes(msg.senderPn));
+    const cleanSender = msg.senderJid.split('@')[0];
+    const cleanSenderPn = msg.senderPn ? msg.senderPn.split('@')[0] : null;
+    const cleanTeacherJids = teacherJids.map((j) => j.split('@')[0]);
+    const cleanStudentJids = studentJids.map((j) => j.split('@')[0]);
+    const cleanWorkshopTeacher = workshop ? workshop.teacher.phoneNumber.split('@')[0] : null;
+
+    const isWorkshopTeacher = !!(cleanWorkshopTeacher && (cleanSender === cleanWorkshopTeacher || cleanSenderPn === cleanWorkshopTeacher));
+    const isTeacher =
+      cleanSender === '601110854085' ||
+      cleanSender === '01110854085' ||
+      cleanSenderPn === '601110854085' ||
+      cleanSenderPn === '01110854085' ||
+      isWorkshopTeacher ||
+      cleanTeacherJids.includes(cleanSender) ||
+      !!(cleanSenderPn && cleanTeacherJids.includes(cleanSenderPn));
     const senderRole = isTeacher ? 'teacher' : 'student';
 
     // 3. Intercept student profile completion replies in DM

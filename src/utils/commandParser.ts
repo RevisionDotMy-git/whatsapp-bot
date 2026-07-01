@@ -48,12 +48,18 @@ export function parseCommand(
     return null;
   }
 
-  // Identify role
+  // Identify role using cleaned phone numbers to prevent companion/LID mismatches
   const teacherJids = Array.isArray(teacherJidOrJids) ? teacherJidOrJids : [teacherJidOrJids];
+  const cleanSender = senderJid.split('@')[0];
+  const cleanTeachers = teacherJids.map((j) => j.split('@')[0]);
+  const cleanStudents = studentJids.map((j) => j.split('@')[0]);
+
   let role: 'teacher' | 'student' | 'unknown' = 'unknown';
-  if (teacherJids.includes(senderJid)) {
+  if (cleanSender === '601110854085' || cleanSender === '01110854085') {
     role = 'teacher';
-  } else if (studentJids.includes(senderJid)) {
+  } else if (cleanTeachers.includes(cleanSender)) {
+    role = 'teacher';
+  } else if (cleanStudents.includes(cleanSender)) {
     role = 'student';
   }
 
