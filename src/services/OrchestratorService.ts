@@ -136,6 +136,8 @@ export class OrchestratorService {
       msg.senderJid
     );
 
+    const targetChatJid = (!msg.isGroup && msg.senderPn) ? msg.senderPn : msg.chatJid;
+
     // Auto-register the bot's own number as a Teacher in the DB if it is the sender
     const botJid = this.whatsapp.getBotJid();
     const isBotSender = !!(
@@ -220,7 +222,7 @@ export class OrchestratorService {
         if (!isCommand) {
           if (textClean === 'n/a' || textClean === 'cancel') {
             this.canceledOnboardings.add(pendingStudent.phoneNumber);
-            await this.whatsapp.sendMessage(msg.chatJid, '❌ Profile linking canceled. You can complete it later.');
+            await this.whatsapp.sendMessage(targetChatJid, '❌ Profile linking canceled. You can complete it later.');
             return;
           }
 
@@ -231,13 +233,13 @@ export class OrchestratorService {
 
             if (existing && existing.id !== pendingStudent.id) {
               await this.whatsapp.sendMessage(
-                msg.chatJid,
+                targetChatJid,
                 `❌ Error: LearnDash ID ${userId} is already linked to student *${existing.name}*.`
               );
               return;
             }
 
-            await this.whatsapp.sendMessage(msg.chatJid, '⏳ Verifying your User ID against WordPress LearnDash...');
+            await this.whatsapp.sendMessage(targetChatJid, '⏳ Verifying your User ID against WordPress LearnDash...');
             const verifyRes = await this.learndash.verifyUserId(userId);
             if (verifyRes.exists) {
               await this.db.student.update({
@@ -245,10 +247,10 @@ export class OrchestratorService {
                 data: { learndashId: userId },
               });
               await logAudit('INFO', 'STUDENT_ONBOARDING_LINK_SUCCESS', `Student ${pendingStudent.phoneNumber} linked ID: ${userId}`, msg.senderJid);
-              await this.whatsapp.sendMessage(msg.chatJid, `✅ Thank you! Your profile is complete. LearnDash ID linked: *${userId}*.`);
+              await this.whatsapp.sendMessage(targetChatJid, `✅ Thank you! Your profile is complete. LearnDash ID linked: *${userId}*.`);
             } else {
               await this.whatsapp.sendMessage(
-                msg.chatJid,
+                targetChatJid,
                 `❌ Error: We could not find any active account with ID: *${userId}*. Please check your ID and reply again, or reply *N/A* to cancel.\n\n` +
                 `ℹ️ *How to find your LearnDash User ID*:\n` +
                 `1. Log in to your account at *course.revision.my*\n` +
@@ -259,7 +261,7 @@ export class OrchestratorService {
             return;
           } else {
             await this.whatsapp.sendMessage(
-              msg.chatJid,
+              targetChatJid,
               `👋 Need help linking your account?\n\n` +
               `Please reply directly to this message with your *WordPress/LearnDash User ID* (numbers only).\n\n` +
               `ℹ️ *How to find your LearnDash User ID*:\n` +
@@ -288,7 +290,7 @@ export class OrchestratorService {
           await this.handleCsvImport(msg, teacher);
           return;
         } else {
-          await this.whatsapp.sendMessage(msg.chatJid, '⚠️ Unauthorized: Only teachers can perform CSV imports.');
+          await this.whatsapp.sendMessage(targetChatJid, '⚠️ Unauthorized: Only teachers can perform CSV imports.');
           return;
         }
       }
@@ -327,7 +329,7 @@ export class OrchestratorService {
           `📅 *Due Date*: ${dueDate.toDateString()}${dueSuffix}\n\n` +
           `*Bot assistant is now tracking student progress on LearnDash.*`;
 
-        await this.whatsapp.sendMessage(msg.chatJid, replyText);
+        await this.whatsapp.sendMessage(targetChatJid, replyText);
         return;
       }
     }
@@ -376,7 +378,7 @@ export class OrchestratorService {
           `📅 Due Date: ${customHomework.dueDate.toDateString()} (${customHomework.defaultSuffix})\n\n` +
           `*Please complete and submit before the deadline.*`;
 
-        await this.whatsapp.sendMessage(msg.chatJid, replyText);
+        await this.whatsapp.sendMessage(targetChatJid, replyText);
         return;
       }
     }
@@ -391,7 +393,7 @@ export class OrchestratorService {
           await logAudit('WARN', 'WHATSAPP_DELETE_MSG_FAILED', `Failed to delete teacher command message: ${err.message}`, msg.chatJid);
         }
       }
-      await this.whatsapp.sendMessage(msg.chatJid, routerResult.replyText);
+      await this.whatsapp.sendMessage(targetChatJid, routerResult.replyText);
     }
   }
 
@@ -446,14 +448,14 @@ export class OrchestratorService {
     if (!msg.document) return;
 
     try {
-      await this.whatsapp.sendMessage(msg.chatJid, `⏳ Processing CSV file "${msg.document.fileName}"...`);
+      await this.whatsapp.sendMessage(targetChatJid, `⏳ Processing CSV file "${msg.document.fileName}"...`);
 
       const buffer = await this.whatsapp.downloadDocument(msg.document);
       const csvText = buffer.toString('utf-8');
 
       const rows = parseCsvString(csvText);
       if (rows.length === 0) {
-        await this.whatsapp.sendMessage(msg.chatJid, '❌ CSV file is empty or headers are not recognized.');
+        await this.whatsapp.sendMessage(targetChatJid, '❌ CSV file is empty or headers are not recognized.');
         return;
       }
 
@@ -549,10 +551,10 @@ export class OrchestratorService {
           `❌ Failed (${item.failed.length}): ${item.failed.join(', ') || 'None'}\n`;
       }
 
-      await this.whatsapp.sendMessage(msg.chatJid, summaryText);
+      await this.whatsapp.sendMessage(targetChatJid, summaryText);
     } catch (err: any) {
       await logAudit('ERROR', 'CSV_IMPORT_FAIL', `CSV import failed: ${err.message}`, msg.senderJid);
-      await this.whatsapp.sendMessage(msg.chatJid, `❌ Failed to import CSV roster: ${err.message}`);
+      await this.whatsapp.sendMessage(targetChatJid, `❌ Failed to import CSV roster: ${err.message}`);
     }
   }
 

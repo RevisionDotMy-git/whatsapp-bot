@@ -565,7 +565,7 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
 
     // Should successfully authorize the student to check homework and reply with the list
     expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
-      '248030116757531@lid',
+      '60123456789@s.whatsapp.net',
       expect.stringContaining('Lesson 1 Homework')
     );
   });
