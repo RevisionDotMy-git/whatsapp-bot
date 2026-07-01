@@ -55,7 +55,7 @@ export class CommandRouter implements ICommandRouter {
     const teacherJids = teachers.map((t) => t.phoneNumber);
     const studentJids = students.map((s) => s.phoneNumber);
 
-    const resolvedSenderJid = msg.senderJid;
+    const resolvedSenderJid = msg.senderPn || msg.senderJid;
 
     // 2. Parse command
     const parsed = parseCommand(
