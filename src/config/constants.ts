@@ -8,8 +8,8 @@ export const CONFIG = {
   
   LEARNDASH: {
     BASE_URL: process.env.LEARNDASH_BASE_URL || '',
-    JWT_USERNAME: process.env.LEARNDASH_JWT_USERNAME || '',
-    JWT_PASSWORD: process.env.LEARNDASH_JWT_PASSWORD || '',
+    JWT_USERNAME: process.env.LEARNDASH_JWT_USERNAME || process.env.LEARNDASH_USERNAME || '',
+    JWT_PASSWORD: process.env.LEARNDASH_JWT_PASSWORD || process.env.LEARNDASH_PASSWORD || '',
   },
   
   GEMINI: {

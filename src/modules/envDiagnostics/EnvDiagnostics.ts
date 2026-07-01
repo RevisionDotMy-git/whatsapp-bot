@@ -8,11 +8,19 @@ const envSchema = z.object({
   PORT: z.string().transform((val) => parseInt(val, 10)).default('4000'),
   DATABASE_URL: z.string().url(),
   LEARNDASH_BASE_URL: z.string().url(),
-  LEARNDASH_JWT_USERNAME: z.string(),
-  LEARNDASH_JWT_PASSWORD: z.string(),
-  GEMINI_API_KEY: z.string(),
+  LEARNDASH_JWT_USERNAME: z.string().optional(),
+  LEARNDASH_USERNAME: z.string().optional(),
+  LEARNDASH_JWT_PASSWORD: z.string().optional(),
+  LEARNDASH_PASSWORD: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
   BOT_PHONE_NUMBER: z.string().optional(),
-});
+}).refine(
+  (data) => (data.LEARNDASH_JWT_USERNAME || data.LEARNDASH_USERNAME) && (data.LEARNDASH_JWT_PASSWORD || data.LEARNDASH_PASSWORD),
+  {
+    message: "Either LEARNDASH_JWT_USERNAME/PASSWORD or LEARNDASH_USERNAME/PASSWORD must be provided",
+    path: ["LEARNDASH_JWT_USERNAME"],
+  }
+);
 
 export class EnvDiagnostics implements IEnvDiagnostics {
   private prisma: PrismaClient;
@@ -56,9 +64,11 @@ export class EnvDiagnostics implements IEnvDiagnostics {
     if (!baseUrl) return false;
 
     try {
+      const username = process.env.LEARNDASH_JWT_USERNAME || process.env.LEARNDASH_USERNAME || '';
+      const password = process.env.LEARNDASH_JWT_PASSWORD || process.env.LEARNDASH_PASSWORD || '';
       const response = await fetch(new URL('/wp-json/wp/v2/users/me', baseUrl).toString(), {
         headers: {
-          'Authorization': `Basic ${Buffer.from(`${process.env.LEARNDASH_JWT_USERNAME}:${process.env.LEARNDASH_JWT_PASSWORD}`).toString('base64')}`
+          'Authorization': `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`
         }
       });
 
