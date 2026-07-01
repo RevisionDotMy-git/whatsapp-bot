@@ -54,6 +54,18 @@ server.post('/api/workshop', async (request, reply) => {
       meetingLink = `https://meet.google.com/${randSegment(3)}-${randSegment(4)}-${randSegment(3)}`;
     }
 
+    // Create WhatsApp group if client is connected
+    let groupJid: string | null = null;
+    if (whatsapp.isConnected()) {
+      try {
+        const groupName = `${body.subject} - Class`;
+        groupJid = await whatsapp.createGroup(groupName, [teacher.phoneNumber]);
+        await whatsapp.promoteAdmins(groupJid, [teacher.phoneNumber]);
+      } catch (grpErr: any) {
+        await logAudit('WARN', 'API_CLASS_CREATE_GROUP_FAILED', `Failed to automatically create WhatsApp group for class: ${grpErr.message}`);
+      }
+    }
+
     // 2. Create the workshop
     const workshop = await prisma.workshop.create({
       data: {
@@ -63,6 +75,7 @@ server.post('/api/workshop', async (request, reply) => {
         classDayOfWeek: body.classDayOfWeek,
         classTime: body.classTime,
         teacherId: teacher.id,
+        whatsappJid: groupJid,
       },
     });
 

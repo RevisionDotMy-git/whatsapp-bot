@@ -8,6 +8,7 @@ import { INotificationManager } from '../notificationManager/INotificationManage
 import { parseCommand } from '../../utils/commandParser.js';
 import { COMMANDS } from '../../utils/commandRegistry.js';
 import { logAudit } from '../../services/db.js';
+import { CONFIG } from '../../config/constants.js';
 
 export class CommandRouter implements ICommandRouter {
   private prisma: PrismaClient;
@@ -119,14 +120,23 @@ export class CommandRouter implements ICommandRouter {
         try {
           const targetJid = this.parsePhoneJid(rawPhone);
           const { inviteMsg } = await this.classManager.inviteUser(inviteType, targetJid, name);
+          let warningText = '';
           if (inviteMsg) {
-            await this.notificationManager.sendMessage(targetJid, inviteMsg);
+            try {
+              await this.notificationManager.sendMessage(targetJid, inviteMsg);
+            } catch (sendErr: any) {
+              await logAudit('WARN', 'INVITE_DM_SEND_FAILED', `Failed to send onboarding DM to ${targetJid}: ${sendErr.message}`);
+              warningText = `\n⚠️ *Warning*: Onboarding DM could not be delivered: ${sendErr.message}`;
+            }
           }
+          const tipText = inviteType === 'student'
+            ? `\n\n*Tip*: If they do not receive the message, please ask them to message this bot number first to bypass WhatsApp's new reach-out timelock.`
+            : '';
           return {
             replyText:
               inviteType === 'teacher'
                 ? `✅ Teacher *${name}* successfully registered in the database.`
-                : `✅ Student *${name}* invited. Onboarding DM sent.`,
+                : `✅ Student *${name}* invited. Onboarding DM sent.${warningText}${tipText}`,
             shouldDeleteOriginal,
           };
         } catch (err: any) {
@@ -612,16 +622,74 @@ export class CommandRouter implements ICommandRouter {
               shouldDeleteOriginal,
             };
           } else {
-            if (subject) {
-              const res = await this.classManager.unenrollStudent(targetJid, subject);
+            // Student removal
+            const isConfirm = parsed.args.length === 3 && parsed.args[2].toLowerCase() === 'confirm';
+            const subjectVal = !isConfirm && parsed.args.slice(2).join(' ').trim();
+
+            if (subjectVal) {
+              // Unenroll student from specific class
+              const res = await this.classManager.unenrollStudent(targetJid, subjectVal);
+              
+              // Kick student from the WhatsApp group of this class if it exists
+              let groupKickMsg = '';
+              if (res.enrollment.workshop.whatsappJid) {
+                try {
+                  await this.whatsapp.removeParticipants(res.enrollment.workshop.whatsappJid, [targetJid]);
+                  groupKickMsg = ' and kicked from the WhatsApp group';
+                } catch (grpErr: any) {
+                  await logAudit('WARN', 'KICK_PARTICIPANT_FAILED', `Failed to kick student ${targetJid} from group: ${grpErr.message}`);
+                  groupKickMsg = ` (failed to kick from WhatsApp group: ${grpErr.message})`;
+                }
+              }
+
               return {
-                replyText: `✅ Student *${res.student.name}* successfully unenrolled from *${res.enrollment.workshop.subject}*.`,
+                replyText: `✅ Student *${res.student.name}* successfully unenrolled from *${res.enrollment.workshop.subject}*${groupKickMsg}.`,
                 shouldDeleteOriginal,
               };
             } else {
+              // Global removal
+              const student = await this.prisma.student.findUnique({
+                where: { phoneNumber: targetJid },
+                include: { enrollments: { include: { workshop: true } } },
+              });
+
+              if (!student) {
+                return { replyText: `❌ Student with phone number ${rawPhone} not found.`, shouldDeleteOriginal };
+              }
+
+              const enrollments = student.enrollments || [];
+              if (enrollments.length > 0 && !isConfirm) {
+                const classList = enrollments.map((e) => `- *${e.workshop.subject}*`).join('\n');
+                return {
+                  replyText: `⚠️ *Warning*: Student *${student.name}* is currently enrolled in the following classes:\n\n` +
+                    `${classList}\n\n` +
+                    `Removing them globally will unenroll them from all these classes and **kick them from all WhatsApp groups**.\n\n` +
+                    `To proceed, please reply with:\n` +
+                    `\`/remove student ${rawPhone} confirm\``,
+                  shouldDeleteOriginal: false,
+                };
+              }
+
+              // Proceed with global removal (either no enrollments, or already confirmed)
+              const kickStatus: string[] = [];
+              for (const e of enrollments) {
+                if (e.workshop.whatsappJid) {
+                  try {
+                    await this.whatsapp.removeParticipants(e.workshop.whatsappJid, [targetJid]);
+                    kickStatus.push(`kicked from "${e.workshop.subject}"`);
+                  } catch (kickErr: any) {
+                    await logAudit('WARN', 'KICK_PARTICIPANT_FAILED', `Failed to kick student ${targetJid} from group ${e.workshop.whatsappJid}: ${kickErr.message}`);
+                    kickStatus.push(`failed to kick from "${e.workshop.subject}" (${kickErr.message})`);
+                  }
+                }
+              }
+
               const res = await this.classManager.removeUserGlobally('student', targetJid);
+              const groupKickMsg = kickStatus.length > 0
+                ? `\n\n👥 *Group Kicks*:\n${kickStatus.map(s => `- ${s}`).join('\n')}`
+                : '';
               return {
-                replyText: `✅ Student *${res.name}* successfully removed from the database.`,
+                replyText: `✅ Student *${res.name}* successfully removed globally from the database${groupKickMsg}.`,
                 shouldDeleteOriginal,
               };
             }
@@ -663,6 +731,30 @@ export class CommandRouter implements ICommandRouter {
           }
           try {
             const classObj = await this.classManager.createClass(createParams);
+
+            let groupCreatedText = '';
+            if (this.whatsapp.isConnected()) {
+              try {
+                const groupName = `${classObj.subject} - Class`;
+                const groupJid = await this.whatsapp.createGroup(groupName, [classObj.teacher.phoneNumber]);
+                
+                // Save the group JID to the database
+                await this.prisma.workshop.update({
+                  where: { id: classObj.id },
+                  data: { whatsappJid: groupJid },
+                });
+
+                // Promote teacher to group admin
+                await this.whatsapp.promoteAdmins(groupJid, [classObj.teacher.phoneNumber]);
+                groupCreatedText = `\n👥 *WhatsApp Group Created*: "${groupName}" (promoted teacher to admin)`;
+              } catch (grpErr: any) {
+                await logAudit('WARN', 'CLASS_CREATE_GROUP_FAILED', `Failed to automatically create WhatsApp group for class: ${grpErr.message}`);
+                groupCreatedText = `\n⚠️ *WhatsApp Group Creation Failed*: ${grpErr.message}`;
+              }
+            } else {
+              groupCreatedText = `\n⚠️ *WhatsApp Group not created*: WhatsApp client is not connected.`;
+            }
+
             return {
               replyText:
                 `✅ *Workshop Successfully Created!*\n\n` +
@@ -670,7 +762,8 @@ export class CommandRouter implements ICommandRouter {
                 `🆔 *Course ID*: ${classObj.courseId}\n` +
                 `📅 *Schedule*: Every ${daysList[classObj.classDayOfWeek]} at ${classObj.classTime}\n` +
                 `👩‍🏫 *Teacher*: ${classObj.teacher.name} (${classObj.teacher.phoneNumber.split('@')[0]})\n` +
-                `📅 *Class Link*: ${classObj.meetingLink}`,
+                `📅 *Class Link*: ${classObj.meetingLink}` +
+                groupCreatedText,
               shouldDeleteOriginal,
             };
           } catch (err: any) {
@@ -698,7 +791,8 @@ export class CommandRouter implements ICommandRouter {
       }
 
       case 'report': {
-        const phoneArgIndex = parsed.args.findIndex((arg) =>
+        try {
+          const phoneArgIndex = parsed.args.findIndex((arg) =>
           /^\d{8,15}$/.test(arg.replace(/[@s\.whatsapp\.net]/g, ''))
         );
         let phone: string | null = null;
@@ -838,77 +932,154 @@ export class CommandRouter implements ICommandRouter {
             shouldDeleteOriginal,
           };
         }
-        break;
+      } catch (err: any) {
+        return { replyText: `❌ Failed to compile progress report: ${err.message}`, shouldDeleteOriginal };
       }
+      break;
+    }
 
       case 'students': {
-        if (!workshopId) {
-          return { replyText: '❌ This command requires a workshop context.', shouldDeleteOriginal: false };
+        try {
+          const cleanSender = msg.senderJid.split('@')[0];
+          const cleanSenderPn = msg.senderPn ? msg.senderPn.split('@')[0] : null;
+          const cleanAdmin = CONFIG.BOT.PHONE_NUMBER.replace(/\D/g, '');
+          const isSelfMessage = !!(msg.rawKey && msg.rawKey.fromMe);
+
+          const isAdmin = isSelfMessage || (cleanAdmin && (cleanSender === cleanAdmin || cleanSenderPn === cleanAdmin));
+
+          // Check if DM (private chat)
+          if (!msg.isGroup) {
+            if (isAdmin) {
+              // Show all students globally
+              const students = await this.prisma.student.findMany({
+                orderBy: { name: 'asc' },
+              });
+              if (students.length === 0) {
+                return { replyText: '📋 *No students registered globally in the database.*', shouldDeleteOriginal };
+              }
+              const studentsList = students
+                .map((s, idx) => `${idx + 1}. ${s.name} (${s.phoneNumber.split('@')[0]})`)
+                .join('\n');
+              return {
+                replyText: `📋 *All Registered Students (Global):*\n\n${studentsList}`,
+                shouldDeleteOriginal,
+              };
+            } else {
+              // Show all students enrolled in any of this teacher's workshops
+              const teacherWorkshops = await this.prisma.workshop.findMany({
+                where: {
+                  teacher: {
+                    phoneNumber: {
+                      in: [msg.senderJid, msg.senderPn || ''].filter(Boolean)
+                    }
+                  }
+                },
+                include: { students: { include: { student: true } } },
+                orderBy: { subject: 'asc' },
+              });
+
+              if (teacherWorkshops.length === 0) {
+                return { replyText: '📋 *You do not have any registered classes.*', shouldDeleteOriginal };
+              }
+
+              // Extract unique students across all teacher's workshops
+              const uniqueStudentsMap = new Map<string, any>();
+              for (const w of teacherWorkshops) {
+                for (const s of w.students) {
+                  uniqueStudentsMap.set(s.student.phoneNumber, s.student);
+                }
+              }
+
+              if (uniqueStudentsMap.size === 0) {
+                return { replyText: '📋 *No students enrolled in your classes.*', shouldDeleteOriginal };
+              }
+
+              const studentsList = Array.from(uniqueStudentsMap.values())
+                .map((s, idx) => `${idx + 1}. ${s.name} (${s.phoneNumber.split('@')[0]})`)
+                .join('\n');
+
+              return {
+                replyText: `📋 *Your Students (across all your classes):*\n\n${studentsList}`,
+                shouldDeleteOriginal,
+              };
+            }
+          }
+
+          // Standard: Group chat (workshop-specific)
+          if (!workshopId) {
+            return { replyText: '❌ This command requires a workshop context.', shouldDeleteOriginal: false };
+          }
+          const workshop = await this.prisma.workshop.findUnique({
+            where: { id: workshopId },
+            include: { students: { include: { student: true } } },
+          });
+          if (!workshop || workshop.students.length === 0) {
+            return { replyText: '📋 *No students enrolled in this class.*', shouldDeleteOriginal };
+          }
+          const studentsList = workshop.students
+            .map((s, idx) => `${idx + 1}. ${s.student.name} (${s.student.phoneNumber.split('@')[0]})`)
+            .join('\n');
+          return {
+            replyText: `📋 *Enrolled Students in ${workshop.subject}:*\n\n${studentsList}`,
+            shouldDeleteOriginal,
+          };
+        } catch (err: any) {
+          return { replyText: `❌ Failed to list students: ${err.message}`, shouldDeleteOriginal };
         }
-        const workshop = await this.prisma.workshop.findUnique({
-          where: { id: workshopId },
-          include: { students: { include: { student: true } } },
-        });
-        if (!workshop || workshop.students.length === 0) {
-          return { replyText: '📋 *No students enrolled in this class.*', shouldDeleteOriginal };
-        }
-        const studentsList = workshop.students
-          .map((s, idx) => `${idx + 1}. ${s.student.name} (${s.student.phoneNumber.split('@')[0]})`)
-          .join('\n');
-        return {
-          replyText: `📋 *Enrolled Students in ${workshop.subject}:*\n\n${studentsList}`,
-          shouldDeleteOriginal,
-        };
       }
 
       case 'check': {
-        if (!workshopId) {
-          return { replyText: '❌ This command requires a workshop context.', shouldDeleteOriginal: false };
-        }
-        const searchName = parsed.args.join(' ').trim();
-        if (!searchName) {
-          return { replyText: '❌ Please specify student name. Format: `/check <student_name>`', shouldDeleteOriginal };
-        }
+        try {
+          if (!workshopId) {
+            return { replyText: '❌ This command requires a workshop context.', shouldDeleteOriginal: false };
+          }
+          const searchName = parsed.args.join(' ').trim();
+          if (!searchName) {
+            return { replyText: '❌ Please specify student name. Format: `/check <student_name>`', shouldDeleteOriginal };
+          }
 
-        const enrollment = await this.prisma.studentWorkshop.findFirst({
-          where: {
-            workshopId,
-            student: { name: { contains: searchName, mode: 'insensitive' } },
-          },
-          include: {
-            student: {
-              include: {
-                progress: {
-                  include: { homework: true },
+          const enrollment = await this.prisma.studentWorkshop.findFirst({
+            where: {
+              workshopId,
+              student: { name: { contains: searchName, mode: 'insensitive' } },
+            },
+            include: {
+              student: {
+                include: {
+                  progress: {
+                    include: { homework: true },
+                  },
                 },
               },
             },
-          },
-        });
+          });
 
-        if (!enrollment) {
+          if (!enrollment) {
+            return {
+              replyText: `❌ No student found matching "${searchName}" in this class.`,
+              shouldDeleteOriginal,
+            };
+          }
+
+          const student = enrollment.student;
+          const progressLines =
+            student.progress.length === 0
+              ? 'No active homework logs.'
+              : student.progress
+                  .map((p) => `- *${p.homework.title}*: ${p.status.replace('_', ' ')} (Score: ${p.score ?? 'N/A'})`)
+                  .join('\n');
+
           return {
-            replyText: `❌ No student found matching "${searchName}" in this class.`,
+            replyText:
+              `👤 *Student Audit: ${student.name}*\n` +
+              `📞 Phone: ${student.phoneNumber.split('@')[0]}\n` +
+              `🆔 LearnDash ID: ${student.learndashId}\n\n` +
+              `*Progress History:*\n${progressLines}`,
             shouldDeleteOriginal,
           };
+        } catch (err: any) {
+          return { replyText: `❌ Failed to check student progress: ${err.message}`, shouldDeleteOriginal };
         }
-
-        const student = enrollment.student;
-        const progressLines =
-          student.progress.length === 0
-            ? 'No active homework logs.'
-            : student.progress
-                .map((p) => `- *${p.homework.title}*: ${p.status.replace('_', ' ')} (Score: ${p.score ?? 'N/A'})`)
-                .join('\n');
-
-        return {
-          replyText:
-            `👤 *Student Audit: ${student.name}*\n` +
-            `📞 Phone: ${student.phoneNumber.split('@')[0]}\n` +
-            `🆔 LearnDash ID: ${student.learndashId}\n\n` +
-            `*Progress History:*\n${progressLines}`,
-          shouldDeleteOriginal,
-        };
       }
     }
 

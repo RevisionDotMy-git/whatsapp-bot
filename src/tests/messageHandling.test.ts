@@ -96,9 +96,13 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
       sendMessage: vi.fn().mockResolvedValue(undefined),
       getGroups: vi.fn().mockResolvedValue([]),
       addParticipants: vi.fn().mockResolvedValue(undefined),
+      removeParticipants: vi.fn().mockResolvedValue(undefined),
+      createGroup: vi.fn().mockResolvedValue('group-123@g.us'),
+      promoteAdmins: vi.fn().mockResolvedValue(undefined),
       getGroupInviteCode: vi.fn().mockResolvedValue('inviteCode'),
       getBotJid: vi.fn().mockReturnValue('60122082435@s.whatsapp.net'),
       deleteMessage: vi.fn().mockResolvedValue(undefined),
+      isConnected: vi.fn().mockReturnValue(true),
     };
 
     learndashMock = {
@@ -1319,6 +1323,7 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
       };
       dbMock.student.findUnique.mockResolvedValue(studentWithEnrollments);
       dbMock.studentWorkshop.delete.mockResolvedValue({});
+      whatsappMock.removeParticipants.mockResolvedValue(undefined);
 
       const msg: IncomingMessage = {
         senderJid: teacherJid,
@@ -1338,9 +1343,10 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
           }
         }
       });
+      expect(whatsappMock.removeParticipants).toHaveBeenCalledWith('group-123@g.us', [studentJid]);
       expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
         'group-123@g.us',
-        expect.stringContaining('successfully unenrolled from *SPM Physics*')
+        expect.stringContaining('successfully unenrolled from *SPM Physics* and kicked from the WhatsApp group')
       );
     });
 
@@ -1363,7 +1369,134 @@ describe('Orchestrator Message Handling & Custom Homework Detection', () => {
       });
       expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
         'group-123@g.us',
-        expect.stringContaining('successfully removed from the database')
+        expect.stringContaining('successfully removed globally from the database')
+      );
+    });
+
+    it('should return warning and request confirmation when removing student with active enrollments', async () => {
+      const studentWithEnrollments = {
+        ...student,
+        enrollments: [
+          {
+            studentId: student.id,
+            workshopId: 'workshop-1',
+            workshop: { id: 'workshop-1', subject: 'SPM Physics', whatsappJid: 'group-123@g.us' }
+          }
+        ]
+      };
+      dbMock.student.findUnique.mockResolvedValue(studentWithEnrollments);
+
+      const msg: IncomingMessage = {
+        senderJid: teacherJid,
+        chatJid: 'group-123@g.us',
+        text: `/remove student ${studentJid}`,
+        isGroup: true,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        'group-123@g.us',
+        expect.stringContaining('⚠️ *Warning*: Student *John Doe* is currently enrolled in the following classes')
+      );
+    });
+
+    it('should remove student globally and kick from all groups when removal is confirmed', async () => {
+      const studentWithEnrollments = {
+        ...student,
+        enrollments: [
+          {
+            studentId: student.id,
+            workshopId: 'workshop-1',
+            workshop: { id: 'workshop-1', subject: 'SPM Physics', whatsappJid: 'group-123@g.us' }
+          }
+        ]
+      };
+      dbMock.student.findUnique.mockResolvedValue(studentWithEnrollments);
+      dbMock.student.delete.mockResolvedValue(student);
+      whatsappMock.removeParticipants.mockResolvedValue(undefined);
+
+      const msg: IncomingMessage = {
+        senderJid: teacherJid,
+        chatJid: 'group-123@g.us',
+        text: `/remove student ${studentJid} confirm`,
+        isGroup: true,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(whatsappMock.removeParticipants).toHaveBeenCalledWith('group-123@g.us', [studentJid]);
+      expect(dbMock.student.delete).toHaveBeenCalledWith({
+        where: { id: student.id }
+      });
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        'group-123@g.us',
+        expect.stringContaining('successfully removed globally from the database')
+      );
+    });
+
+    it('should list all registered students globally for admins in DMs', async () => {
+      const studentsListMock = [
+        { id: 's-1', name: 'Alice', phoneNumber: '60111111111@s.whatsapp.net', learndashId: 11 },
+        { id: 's-2', name: 'Bob', phoneNumber: '60222222222@s.whatsapp.net', learndashId: 22 }
+      ];
+      dbMock.student.findMany.mockResolvedValue(studentsListMock);
+
+      const msg: IncomingMessage = {
+        senderJid: '601110854085@s.whatsapp.net', // Admin
+        chatJid: '601110854085@s.whatsapp.net',
+        text: '/students',
+        isGroup: false,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        '601110854085@s.whatsapp.net',
+        expect.stringContaining('📋 *All Registered Students (Global):*')
+      );
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        '601110854085@s.whatsapp.net',
+        expect.stringContaining('Alice')
+      );
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        '601110854085@s.whatsapp.net',
+        expect.stringContaining('Bob')
+      );
+    });
+
+    it('should list only assigned students for teachers in DMs', async () => {
+      const teacherWorkshops = [
+        {
+          id: 'w-1',
+          subject: 'Physics Class',
+          students: [
+            { student: { id: 's-1', name: 'Charlie', phoneNumber: '60333333333@s.whatsapp.net' } }
+          ]
+        }
+      ];
+      dbMock.workshop.findMany.mockResolvedValue(teacherWorkshops);
+
+      const msg: IncomingMessage = {
+        senderJid: teacherJid,
+        chatJid: teacherJid,
+        text: '/students',
+        isGroup: false,
+        timestamp: 1718540000,
+      };
+
+      await (orchestrator as any).handleMessage(msg);
+
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        teacherJid,
+        expect.stringContaining('📋 *Your Students (across all your classes):*')
+      );
+      expect(whatsappMock.sendMessage).toHaveBeenCalledWith(
+        teacherJid,
+        expect.stringContaining('Charlie')
       );
     });
 

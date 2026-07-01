@@ -140,13 +140,16 @@
 
  ### /remove
  - Description: Deletes a user globally or unenrolls a student from a workshop.
+   - For global student removal, if they have active class enrollments, the bot will display a list of classes and request confirmation.
+   - Deleting or unenrolling a student automatically kicks them from the corresponding WhatsApp group(s).
  - Roles: `teacher`
  - Accessibility: `group`, `private`
- - Args: `student|teacher <phone> [<subject>]`
+ - Args: `student|teacher <phone> [<subject>|confirm]`
  - Examples:
 
  ```
  /remove student 60123456789
+ /remove student 60123456789 confirm
  /remove student 60123456789 SPM Physics
  /remove teacher 60123456789
  ```
@@ -165,7 +168,11 @@
  ```
 
  ### /students
- - Description: Lists all students enrolled in the class.
+ - Description: Lists students.
+   - In a **group chat** (or workshop context), lists only the students enrolled in that specific class.
+   - In a **private DM**:
+     - For **Admins**, lists all registered students globally.
+     - For **Teachers**, lists all unique students enrolled across any of their classes.
  - Roles: `teacher`
  - Accessibility: `group`, `private`
  - Example:
