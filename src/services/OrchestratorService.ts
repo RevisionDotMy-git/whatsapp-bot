@@ -208,12 +208,13 @@ export class OrchestratorService {
     const cleanStudentJids = studentJids.map((j) => j.split('@')[0]);
     const cleanWorkshopTeacher = workshop ? workshop.teacher.phoneNumber.split('@')[0] : null;
 
+    const cleanAdmin = CONFIG.BOT.PHONE_NUMBER.replace(/\D/g, '');
+    const isSelfMessage = !!(msg.rawKey && msg.rawKey.fromMe);
+
     const isWorkshopTeacher = !!(cleanWorkshopTeacher && (cleanSender === cleanWorkshopTeacher || cleanSenderPn === cleanWorkshopTeacher));
     const isTeacher =
-      cleanSender === '601110854085' ||
-      cleanSender === '01110854085' ||
-      cleanSenderPn === '601110854085' ||
-      cleanSenderPn === '01110854085' ||
+      isSelfMessage ||
+      (cleanAdmin && (cleanSender === cleanAdmin || cleanSenderPn === cleanAdmin)) ||
       isWorkshopTeacher ||
       cleanTeacherJids.includes(cleanSender) ||
       !!(cleanSenderPn && cleanTeacherJids.includes(cleanSenderPn));

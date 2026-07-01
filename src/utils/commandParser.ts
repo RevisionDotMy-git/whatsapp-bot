@@ -1,4 +1,5 @@
 import { COMMANDS, UserRole } from './commandRegistry.js';
+import { CONFIG } from '../config/constants.js';
 
 export interface CommandResult {
   command: string;
@@ -20,7 +21,8 @@ export function parseCommand(
   text: string,
   senderJid: string,
   teacherJidOrJids: string | string[],
-  studentJids: string[]
+  studentJids: string[],
+  isSelfMessage?: boolean
 ): CommandResult | null {
   const trimmed = text.trim();
   
@@ -54,8 +56,12 @@ export function parseCommand(
   const cleanTeachers = teacherJids.map((j) => j.split('@')[0]);
   const cleanStudents = studentJids.map((j) => j.split('@')[0]);
 
+  const cleanAdmin = CONFIG.BOT.PHONE_NUMBER.replace(/\D/g, '');
+
   let role: 'teacher' | 'student' | 'unknown' = 'unknown';
-  if (cleanSender === '601110854085' || cleanSender === '01110854085') {
+  if (isSelfMessage) {
+    role = 'teacher';
+  } else if (cleanAdmin && cleanSender === cleanAdmin) {
     role = 'teacher';
   } else if (cleanTeachers.includes(cleanSender)) {
     role = 'teacher';

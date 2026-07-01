@@ -57,7 +57,13 @@ export class CommandRouter implements ICommandRouter {
     const resolvedSenderJid = msg.senderJid;
 
     // 2. Parse command
-    const parsed = parseCommand(msg.text, resolvedSenderJid, teacherJids, studentJids);
+    const parsed = parseCommand(
+      msg.text,
+      resolvedSenderJid,
+      teacherJids,
+      studentJids,
+      !!(msg.rawKey && msg.rawKey.fromMe)
+    );
     if (!parsed) {
       return null;
     }
