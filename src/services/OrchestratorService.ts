@@ -447,6 +447,8 @@ export class OrchestratorService {
   private async handleCsvImport(msg: IncomingMessage, teacher: any): Promise<void> {
     if (!msg.document) return;
 
+    const targetChatJid = (!msg.isGroup && msg.senderPn) ? msg.senderPn : msg.chatJid;
+
     try {
       await this.whatsapp.sendMessage(targetChatJid, `⏳ Processing CSV file "${msg.document.fileName}"...`);
 
